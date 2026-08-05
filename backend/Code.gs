@@ -156,6 +156,7 @@ function registerStudy() {
     'STUDY_' + base.toUpperCase(),
     JSON.stringify({
       base: base,                                  // preserves original casing for admin.html's listing
+      name: 'Display Name Here',                   // shown in the frontend's title/eyebrow
       redcapApiUrl: 'https://their-redcap-instance.org/api/',
       redcapApiToken: 'THEIR_REDCAP_API_TOKEN',
       forwarded: false,
@@ -235,10 +236,13 @@ function doPost(e) {
     return jsonOutput({ success: false, error: 'Missing or invalid study identifier.' });
   }
 
-  // healthCheck is a config/connectivity diagnostic, not a participant
-  // action — it doesn't take or need a token.
+  // healthCheck and studyInfo are public/unauthenticated — neither takes
+  // or needs a token.
   if (action === 'healthCheck') {
     return jsonOutput(handleHealthCheck(base));
+  }
+  if (action === 'studyInfo') {
+    return jsonOutput(handleStudyInfo(base));
   }
 
   const token = sanitizeToken(body.token);
@@ -257,6 +261,24 @@ function doPost(e) {
   } catch (err) {
     return jsonOutput({ success: false, error: 'Server error: ' + err.message });
   }
+}
+
+// ── Action: studyInfo ────────────────────────────────────────────────────
+// Public, unauthenticated — just the display name for a study slug, so
+// the frontend can show branding without needing a public studies.json.
+
+function handleStudyInfo(base) {
+  const raw = PropertiesService.getScriptProperties().getProperty('STUDY_' + base.toUpperCase());
+  if (!raw) {
+    return { success: false, error: 'Unknown study.' };
+  }
+  let study = {};
+  try {
+    study = JSON.parse(raw);
+  } catch (err) {
+    // Malformed config — still resolvable enough to show something.
+  }
+  return { success: true, name: study.name || study.base || base };
 }
 
 // ── Action: healthCheck ─────────────────────────────────────────────────
@@ -384,8 +406,10 @@ function handleAdminListStudies() {
         // Malformed entry — still list it (by its property-key casing)
         // so the admin can see and fix or remove it.
       }
+      const base = parsed.base || key.substring('STUDY_'.length);
       return {
-        base: parsed.base || key.substring('STUDY_'.length),
+        base: base,
+        name: parsed.name || base,
         forwarded: !!parsed.forwarded,
         hasRedcapUrl: !!parsed.redcapApiUrl,
         hasRedcapToken: !!parsed.redcapApiToken,
@@ -423,6 +447,7 @@ function handleAdminRegisterStudy(study) {
 
   const config = {
     base: base,
+    name: String(study.name || existing.name || base).trim(),
     redcapApiUrl: String(study.redcapApiUrl || existing.redcapApiUrl || '').trim(),
     redcapApiToken: String(study.redcapApiToken || existing.redcapApiToken || '').trim(),
     forwarded: study.forwarded !== undefined ? !!study.forwarded : !!existing.forwarded

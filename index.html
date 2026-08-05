@@ -433,7 +433,7 @@
 </head>
 <body>
 
-  <!-- Shown while studies.json loads, or if the ?base= link is missing/unknown -->
+  <!-- Shown while resolving the study, or if the ?base= link is missing/unknown -->
   <div class="card" id="statusCard">
     <div class="status-icon" id="statusIcon"><span class="spinner"></span></div>
     <p class="eyebrow">StudyLink Portal</p>
@@ -504,16 +504,12 @@
 
 <script>
   // ── Configuration ────────────────────────────────────────────────────
-  // One frontend deployment serves every study. Which study a visitor
-  // hits is picked by a `?base=value` query param, resolved at load time
-  // against studies.json (a public map of base -> Apps Script URL + name).
-  // `base` is also the exact value the backend uses to key a hub study's
-  // config and derive its relay alias — see backend/Code.gs. Adding a new
-  // study is: stand up (or register on a hub) its Apps Script backend,
-  // then add one entry to studies.json and push — no frontend redeploy.
-  const STUDIES_JSON_URL = 'studies.json';
+  // This site talks to one Apps Script deployment. Which study a visitor
+  // hits is picked by a `?base=value` query param — the backend resolves
+  // everything else (REDCap config, display name, dedicated vs forwarded)
+  // from its own Script Properties. See backend/Code.gs.
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyrvKpSqkrc4j6QtGr7LyhhEMvREm3AQFI6UOilWmUwNYsUBRTMPFKC5v6yJNHj6pBf-Q/exec';
 
-  let APPS_SCRIPT_URL = null;
   let STUDY_NAME = null;
   let STUDY_BASE = null;
 
@@ -563,25 +559,22 @@
       showStudyError('Missing study link', 'This link is missing a study identifier. Please use the exact link your research team provided.');
       return;
     }
+    STUDY_BASE = base;
 
-    let studies;
+    let result;
     try {
-      const response = await fetch(STUDIES_JSON_URL, { cache: 'no-store' });
-      studies = await response.json();
+      result = await callBackend('studyInfo', {});
     } catch (err) {
-      showStudyError('Could not load configuration', 'Please check your connection and reload the page.');
+      showStudyError('Could not reach the server', 'Please check your connection and reload the page.');
       return;
     }
 
-    const study = studies[base];
-    if (!study || !study.appsScriptUrl) {
+    if (!result.success) {
       showStudyError('Study not found', 'This link doesn\'t match a known study. Please use the exact link your research team provided.');
       return;
     }
 
-    APPS_SCRIPT_URL = study.appsScriptUrl;
-    STUDY_NAME = study.name || 'StudyLink Portal';
-    STUDY_BASE = base;
+    STUDY_NAME = result.name || 'StudyLink Portal';
     document.title = STUDY_NAME;
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
 

@@ -1,12 +1,15 @@
 # StudyLink Portal
 
-Static frontend (GitHub Pages) + Google Apps Script backend (Gmail + REDCap). Participants log
-in with a token and get their device's verification code.
+Static frontend (GitHub Pages) + one Google Apps Script backend (Gmail + REDCap). Participants
+log in with a token and get their device's verification code.
 
 - `index.html` — participant login/code page
 - `admin.html` — study management UI
 - `backend/Code.gs` — Apps Script Web App
-- `studies.json` — public map of `base` → Apps Script URL + name. **Never contains secrets.**
+
+Both frontend files hardcode the same `APPS_SCRIPT_URL` — this site talks to exactly one Apps
+Script deployment. Everything else (REDCap config, display name, dedicated vs forwarded) lives
+in that deployment's Script Properties, keyed by `base`. No config file in this repo, ever.
 
 ## Deploy the backend
 
@@ -15,15 +18,16 @@ in with a token and get their device's verification code.
 2. Paste in `backend/Code.gs`.
 3. Deploy → New deployment → Web app → Execute as **Me** → Access **Anyone** → Deploy. Authorize
    the requested scopes.
-4. Copy the `/exec` URL.
+4. Copy the `/exec` URL, paste it into `APPS_SCRIPT_URL` in both `index.html` and `admin.html`,
+   push.
 
 Redeploy (Manage deployments → pencil → New version) any time the code changes — same URL.
 
 ## Register a study
 
 Every study is one `STUDY_<BASE>` Script Property (JSON). `base` is used everywhere: the
-`studies.json` key, the `?base=` link param, and — for a study whose Gmail this deployment owns
-directly — that account's own username.
+`?base=` link param, and — for a study whose Gmail this deployment owns directly — that
+account's own username.
 
 **Dedicated** (this deployment's own Gmail is the study's inbox — `base` = that account's
 username):
@@ -32,6 +36,7 @@ username):
 function registerStudy() {
   const base = 'samma.study';
   PropertiesService.getScriptProperties().setProperty('STUDY_' + base.toUpperCase(), JSON.stringify({
+    name: 'SAMMA Study',
     redcapApiUrl: 'https://researchsurvey.flinders.edu.au/api/',
     redcapApiToken: 'YOUR_REDCAP_API_TOKEN',
     forwarded: false
@@ -41,7 +46,8 @@ function registerStudy() {
 
 **Forwarded** (another researcher's own Gmail, no account access shared) — see below.
 
-Or use [admin.html](admin.html) instead of the editor.
+Or use [admin.html](admin.html) instead of the editor — registering there is immediately live,
+nothing else to push.
 
 REDCap project needs: a token field (`patient_token` default), a status field
 (`forwarding_status` default, must be `1` to allow login), a device-email override field
@@ -50,14 +56,6 @@ REDCap project needs: a token field (`patient_token` default), a status field
 
 Remove a study: `unregisterStudy()`. Check a study's config: "Check system status" on the
 sign-in page (no token needed).
-
-## Add to studies.json
-
-```json
-{
-  "samma.study": { "name": "SAMMA Study", "appsScriptUrl": "https://script.google.com/macros/s/.../exec" }
-}
-```
 
 Participant link: `https://<you>.github.io/studylink-portal/?base=<base>`.
 
@@ -85,6 +83,7 @@ sharing account access.
 function registerStudy() {
   const base = 'otherstudy';
   PropertiesService.getScriptProperties().setProperty('STUDY_' + base.toUpperCase(), JSON.stringify({
+    name: 'Other Study',
     redcapApiUrl: 'https://their-redcap-instance.org/api/',
     redcapApiToken: 'THEIR_REDCAP_API_TOKEN',
     forwarded: true,
@@ -92,8 +91,6 @@ function registerStudy() {
   }));
 }
 ```
-
-5. Add to `studies.json`, pointing at the hub's `/exec` URL.
 
 Gmail's automatic forwarding preserves the original `To:` header (a manual forward doesn't), so
 the backend recovers which participant a forwarded message belongs to from that header. Test
@@ -106,19 +103,18 @@ with a real send before relying on it for a study.
 Setup: Script Property `ADMIN_TOKEN` (long random value) — set directly, or via
 `setAdminToken()`. Treat it like a REDCap credential.
 
-Usage: pick the deployment (dropdown from `studies.json`, or "Other" for a new one), enter the
-token, Load studies. It doesn't edit `studies.json` for you — copies a snippet to paste in.
+Usage: enter the token, Load studies.
 
 ## Security
 
 - Access token is the only credential — issue random 12+ char strings, not guessable ones.
 - 5 failed attempts / 10 min lockout, per token (participant and admin tokens separately). No
   IP-based throttling.
-- Credentials live only in Script Properties — never in `studies.json`, never in git, never
-  sent to the browser.
+- Credentials live only in Script Properties — never in this repo, never sent to the browser.
 - `fetchCode` searches `in:anywhere` (incl. Spam/Trash) and returns up to 10 recent matches, not
   just the latest.
-- `healthCheck` needs no token but returns only pass/fail, never secrets.
+- `healthCheck` / `studyInfo` need no token but return only pass/fail or a display name — never
+  secrets.
 - Forwarded-study mail lands in the hub's own inbox — the hub owner can technically read it,
   same trust level as their own dedicated study, just extended to studies hosted for others.
 
