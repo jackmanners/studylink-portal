@@ -393,11 +393,13 @@
 
   const POLL_INTERVAL_MS = 5000;
   const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
+  const AUTO_RECHECK_MS = 30000; // re-run the fetch cycle this often while idle
 
   // ── State ────────────────────────────────────────────────────────────
   let currentToken = null;
   let pollTimer = null;
   let pollAttempts = 0;
+  let autoRecheckTimer = null;
 
   const statusCard = document.getElementById('statusCard');
   const statusHeading = document.getElementById('statusHeading');
@@ -524,6 +526,7 @@
 
   logoutBtn.addEventListener('click', () => {
     resetCodeScreen();
+    clearAutoRecheck();
     currentToken = null;
     document.getElementById('patientToken').value = '';
     flipInner.classList.remove('flipped');
@@ -547,6 +550,9 @@
   }
 
   function startPolling() {
+    // Every call to startPolling — manual click, initial login, or an
+    // auto-recheck firing — resets the 30s auto-recheck clock from here.
+    scheduleAutoRecheck();
     pollAttempts = 0;
     fetchBtn.disabled = true;
     codeDisplay.classList.add('hidden');
@@ -559,6 +565,25 @@
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
+    }
+  }
+
+  // Re-runs the same check as a manual "Fetch Device Code" press, every
+  // AUTO_RECHECK_MS, as long as this screen stays open. Skips a tick if a
+  // fetch cycle is still actively running (pollTimer set) rather than
+  // interrupting it. Resets (not just continues) on every startPolling()
+  // call, so a manual press pushes the next auto-recheck 30s further out.
+  function scheduleAutoRecheck() {
+    if (autoRecheckTimer) clearInterval(autoRecheckTimer);
+    autoRecheckTimer = setInterval(() => {
+      if (!pollTimer) startPolling();
+    }, AUTO_RECHECK_MS);
+  }
+
+  function clearAutoRecheck() {
+    if (autoRecheckTimer) {
+      clearInterval(autoRecheckTimer);
+      autoRecheckTimer = null;
     }
   }
 
