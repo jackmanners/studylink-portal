@@ -133,3 +133,8 @@ instead of using `studies.json`.
   file, never sent to the browser, and never committed to git.
 - Gmail scopes granted to the script (read + modify, to mark messages read) are broad by
   necessity — the script account should be a dedicated study inbox, not a personal one.
+- `fetchCode` returns up to the 10 most recent matching emails (not just unread ones) within
+  the last day, so a participant can see prior codes if more than one arrived — the frontend
+  shows the newest prominently and the rest behind an auto-expand/collapse toggle. This means
+  a verified session can see everything sent to that device's address in the last day, not
+  just a single one-time code.

@@ -207,6 +207,48 @@
     color: var(--muted);
     word-break: break-word;
   }
+  .history-toggle {
+    background: none;
+    border: none;
+    width: auto;
+    padding: 0;
+    margin-top: 14px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .history-toggle:hover { color: var(--primary-dark); background: none; }
+  .code-history {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .code-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.8rem;
+  }
+  .code-history-code {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.06em;
+    color: var(--text);
+  }
+  .code-history-meta {
+    color: var(--muted);
+    text-align: right;
+    white-space: nowrap;
+  }
   .logout-link {
     display: block;
     text-align: center;
@@ -265,6 +307,9 @@
           <div class="code-subject" id="codeSubject"></div>
         </div>
 
+        <button type="button" class="history-toggle hidden" id="historyToggle"></button>
+        <div class="code-history hidden" id="codeHistory"></div>
+
         <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
       </div>
 
@@ -309,7 +354,11 @@
   const codeDisplay = document.getElementById('codeDisplay');
   const codeValue = document.getElementById('codeValue');
   const codeSubject = document.getElementById('codeSubject');
+  const historyToggle = document.getElementById('historyToggle');
+  const codeHistory = document.getElementById('codeHistory');
   const logoutBtn = document.getElementById('logoutBtn');
+
+  const HISTORY_AUTO_EXPAND_MINUTES = 10;
 
   // ── Study resolution ─────────────────────────────────────────────────
   initStudy();
@@ -421,6 +470,9 @@
     statusLine.textContent = '';
     codeDisplay.classList.add('hidden');
     codeDisplay.classList.remove('pulse');
+    historyToggle.classList.add('hidden');
+    codeHistory.classList.add('hidden');
+    codeHistory.innerHTML = '';
   }
 
   function startPolling() {
@@ -478,6 +530,57 @@
     codeSubject.textContent = result.subject || '';
     codeDisplay.classList.remove('hidden');
     codeDisplay.classList.add('pulse');
+    renderHistory(result.messages || [], result.receivedAt);
+  }
+
+  // Others besides the primary/most-recent code, which is already shown
+  // big above. Nothing to render when there's only one match.
+  function renderHistory(messages, primaryReceivedAt) {
+    const others = messages.slice(1);
+    if (others.length === 0) {
+      historyToggle.classList.add('hidden');
+      codeHistory.classList.add('hidden');
+      codeHistory.innerHTML = '';
+      return;
+    }
+
+    codeHistory.innerHTML = others.map((m) => {
+      const subject = escapeHtml(m.subject || '');
+      const code = escapeHtml(m.code || '');
+      const when = escapeHtml(relativeTime(m.receivedAt));
+      return '<div class="code-history-item">' +
+        '<span class="code-history-code">' + code + '</span>' +
+        '<span class="code-history-meta" title="' + subject + '">' + when + '</span>' +
+        '</div>';
+    }).join('');
+
+    const primaryAgeMinutes = (Date.now() - new Date(primaryReceivedAt).getTime()) / 60000;
+    const autoExpand = primaryAgeMinutes < HISTORY_AUTO_EXPAND_MINUTES;
+
+    historyToggle.textContent = 'Show ' + others.length + ' earlier code' + (others.length > 1 ? 's' : '');
+    historyToggle.classList.remove('hidden');
+    codeHistory.classList.toggle('hidden', !autoExpand);
+    historyToggle.classList.toggle('hidden', autoExpand);
+  }
+
+  historyToggle.addEventListener('click', () => {
+    codeHistory.classList.remove('hidden');
+    historyToggle.classList.add('hidden');
+  });
+
+  function relativeTime(isoString) {
+    const minutes = Math.max(0, Math.round((Date.now() - new Date(isoString).getTime()) / 60000));
+    if (minutes < 1) return 'just now';
+    if (minutes === 1) return '1 min ago';
+    if (minutes < 60) return minutes + ' min ago';
+    const hours = Math.round(minutes / 60);
+    return hours === 1 ? '1 hr ago' : hours + ' hrs ago';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 </script>
 </body>

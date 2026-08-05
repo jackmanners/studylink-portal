@@ -141,6 +141,9 @@ function handleVerify(token) {
 
 // ── Action: fetchCode ──────────────────────────────────────────────────
 
+// Cap on how many matched emails we'll ever return, oldest dropped first.
+const MAX_MATCHES_RETURNED = 10;
+
 function handleFetchCode(token) {
   const session = getSession(token);
   if (!session) {
@@ -148,37 +151,48 @@ function handleFetchCode(token) {
   }
 
   const address = session.deviceEmail || buildAlias(session.recordId);
-  const query = 'to:' + address + ' is:unread newer_than:1d';
+  // Not restricted to is:unread — we want every matching email in the
+  // window, not just ones not yet marked read.
+  const query = 'to:' + address + ' newer_than:1d';
 
-  const threads = GmailApp.search(query, 0, 5);
+  const threads = GmailApp.search(query, 0, MAX_MATCHES_RETURNED);
   if (threads.length === 0) {
     return { found: false };
   }
 
-  // Most recent thread, most recent unread message in it.
-  const messages = threads[0].getMessages();
-  let target = null;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].isUnread()) {
-      target = messages[i];
-      break;
-    }
+  let allMessages = [];
+  threads.forEach((thread) => {
+    allMessages = allMessages.concat(thread.getMessages());
+  });
+  allMessages.sort((a, b) => b.getDate().getTime() - a.getDate().getTime());
+
+  const matches = [];
+  for (let i = 0; i < allMessages.length && matches.length < MAX_MATCHES_RETURNED; i++) {
+    const message = allMessages[i];
+    const subject = message.getSubject();
+    const code = extractCode(message.getPlainBody()) || extractCode(subject);
+    if (!code) continue;
+    matches.push({ code: code, subject: subject, receivedAt: message.getDate().toISOString() });
   }
-  if (!target) {
+
+  if (matches.length === 0) {
     return { found: false };
   }
 
-  const subject = target.getSubject();
-  const body = target.getPlainBody();
-  const code = extractCode(body) || extractCode(subject);
+  // Mark the newest message read once, as a best-effort "seen" marker —
+  // harmless if it was already read, and no longer needed for the search
+  // to keep working since we no longer filter on is:unread.
+  if (allMessages[0].isUnread()) {
+    allMessages[0].markRead();
+  }
 
-  target.markRead();
-
+  const primary = matches[0];
   return {
     found: true,
-    code: code || null,
-    subject: subject,
-    body: body.substring(0, 2000)
+    code: primary.code,
+    subject: primary.subject,
+    receivedAt: primary.receivedAt,
+    messages: matches
   };
 }
 
