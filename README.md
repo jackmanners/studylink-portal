@@ -80,6 +80,11 @@ instead of debugging through a participant-facing error.
 **Removing a study:** run `unregisterStudy_()` with the right `base`, and remove its
 `studies.json` entry.
 
+**Prefer not opening the Apps Script editor for this?** [admin.html](admin.html), hosted
+alongside the rest of this site, does the same registration/edit/removal from a form in the
+browser instead — see "Using the admin panel" below. It needs a one-time setup step
+(`setAdminToken_()`) before it'll do anything.
+
 ## 3. Add the study to studies.json
 
 [studies.json](studies.json) is a plain public map of `base` → Apps Script URL + display name —
@@ -207,6 +212,32 @@ If you set up a study before this Script Properties layout existed (flat `REDCAP
    arbitrary slug was used before).
 7. Confirm via "Check system status" before telling participants.
 
+## Using the admin panel
+
+[admin.html](admin.html) does everything `registerStudy_()`/`unregisterStudy_()` do, from a
+form in the browser instead of the Apps Script editor — register a new study, edit an existing
+one (REDCap URL/token fields can be left blank to keep their current values), remove a study,
+or just see what's registered on a deployment.
+
+**One-time setup, per deployment:** run `setAdminToken_()` in `Code.gs` with a long, random
+value filled in — pick something like a generated password, not a memorable phrase. Treat this
+token like a master password: anyone who has it can register, edit, or remove **any** study on
+that deployment, including setting arbitrary REDCap credentials, so store it in a password
+manager rather than, say, a chat message. Without this property set, every admin action is
+refused.
+
+**Using it:** open `admin.html` on your Pages site, paste in the deployment's `/exec` URL and
+the admin token, click **Load studies**. Both fields save to your own browser's local storage
+for convenience (never sent anywhere but the URL you provide) — you won't need to retype them
+next visit on the same device.
+
+`admin.html` is public, same as every other file in this repo — reachable by anyone who guesses
+or finds the URL. That's fine: every admin action requires the correct token, checked
+server-side, with the same 5-attempts/10-minute lockout as participant logins, and the panel
+never displays REDCap credentials back once they're stored (only whether a study has them set).
+The one thing it *can't* do for you is edit `studies.json` and push — that's still a manual git
+step; the panel generates the JSON snippet to paste in after a successful save.
+
 ## Security notes (read before enrolling real participants)
 
 - **The access token is the only credential.** The frontend has no Participant ID field —
@@ -242,3 +273,10 @@ If you set up a study before this Script Properties layout existed (flat `REDCAP
   researcher never shares their own Gmail, but they are trusting the hub operator with copies
   of their participants' verification mail. Make sure that's acceptable for your institution's
   data-handling requirements before offering this to other researchers.
+- **The `admin*` actions are the highest-privilege thing this system exposes** — the admin token
+  gates full read/write control over every study on a deployment, including setting arbitrary
+  REDCap credentials. It's checked server-side with the same lockout as participant tokens
+  (5 attempts / 10 minutes), and `adminListStudies` never returns REDCap credentials once
+  stored — but the token itself is exactly as sensitive as a REDCap API token, and should be
+  treated the same way (password manager, not a chat message or a browser bookmark with the
+  token baked into the URL).

@@ -155,6 +155,7 @@ function registerStudy_() {
   PropertiesService.getScriptProperties().setProperty(
     'STUDY_' + base.toUpperCase(),
     JSON.stringify({
+      base: base,                                  // preserves original casing for admin.html's listing
       redcapApiUrl: 'https://their-redcap-instance.org/api/',
       redcapApiToken: 'THEIR_REDCAP_API_TOKEN',
       forwarded: false,
@@ -177,6 +178,16 @@ function unregisterStudy_() {
   PropertiesService.getScriptProperties().deleteProperty('STUDY_' + base.toUpperCase());
 }
 
+// Required once per deployment to use the admin panel (admin.html) —
+// without this set, all admin* actions are refused. Treat this value
+// like a master password: anyone who has it can register, edit, or
+// remove any study on this deployment, including setting arbitrary
+// REDCap credentials. Pick something long and random, store it in a
+// password manager, never commit it anywhere.
+function setAdminToken_() {
+  PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN', 'CHOOSE_A_LONG_RANDOM_TOKEN');
+}
+
 // Failed-verify lockout: max attempts per token within LOCKOUT_WINDOW_SEC.
 const MAX_VERIFY_ATTEMPTS = 5;
 const LOCKOUT_WINDOW_SEC = 600; // 10 minutes
@@ -187,6 +198,8 @@ const SESSION_TTL_SEC = 300; // 5 minutes
 
 // ── Entry point ─────────────────────────────────────────────────────────
 
+const ADMIN_ACTIONS = ['adminListStudies', 'adminRegisterStudy', 'adminUnregisterStudy'];
+
 function doPost(e) {
   let body;
   try {
@@ -196,6 +209,27 @@ function doPost(e) {
   }
 
   const action = body.action;
+
+  if (ADMIN_ACTIONS.indexOf(action) !== -1) {
+    const authError = checkAdminToken_(body.adminToken);
+    if (authError) {
+      return jsonOutput({ success: false, error: authError });
+    }
+    try {
+      if (action === 'adminListStudies') {
+        return jsonOutput(handleAdminListStudies());
+      }
+      if (action === 'adminRegisterStudy') {
+        return jsonOutput(handleAdminRegisterStudy(body.study));
+      }
+      if (action === 'adminUnregisterStudy') {
+        return jsonOutput(handleAdminUnregisterStudy(body.base));
+      }
+    } catch (err) {
+      return jsonOutput({ success: false, error: 'Server error: ' + err.message });
+    }
+  }
+
   const base = sanitizeBase_(body.base);
   if (!base) {
     return jsonOutput({ success: false, error: 'Missing or invalid study identifier.' });
@@ -306,6 +340,130 @@ function checkRelay_(config) {
   } catch (err) {
     return { label: 'Relay alias reachable', ok: false, detail: err.message };
   }
+}
+
+// ── Admin actions (admin.html) ────────────────────────────────────────
+// Lets studies be registered/edited/removed from the browser instead of
+// the Apps Script editor. Gated by ADMIN_TOKEN (see setAdminToken_()) —
+// these responses never echo back REDCap credentials once stored, only
+// booleans/labels, so a stolen adminListStudies response can't leak them.
+
+const MAX_ADMIN_ATTEMPTS = 5;
+const ADMIN_LOCKOUT_WINDOW_SEC = 600; // 10 minutes
+
+function checkAdminToken_(token) {
+  const cache = CacheService.getScriptCache();
+  const attemptsKey = 'admin_attempts';
+  const attempts = Number(cache.get(attemptsKey) || 0);
+  if (attempts >= MAX_ADMIN_ATTEMPTS) {
+    return 'Too many attempts. Please try again later.';
+  }
+
+  const expected = PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN');
+  if (!expected) {
+    return 'Admin token not configured on this deployment. Run setAdminToken_() first.';
+  }
+  if (String(token || '') !== expected) {
+    cache.put(attemptsKey, String(attempts + 1), ADMIN_LOCKOUT_WINDOW_SEC);
+    return 'Invalid admin token.';
+  }
+
+  cache.remove(attemptsKey);
+  return null; // authorized
+}
+
+function handleAdminListStudies() {
+  const props = PropertiesService.getScriptProperties().getProperties();
+  const studies = Object.keys(props)
+    .filter((key) => key.indexOf('STUDY_') === 0)
+    .map((key) => {
+      let parsed = {};
+      try {
+        parsed = JSON.parse(props[key]);
+      } catch (err) {
+        // Malformed entry — still list it (by its property-key casing)
+        // so the admin can see and fix or remove it.
+      }
+      return {
+        base: parsed.base || key.substring('STUDY_'.length),
+        forwarded: !!parsed.forwarded,
+        hasRedcapUrl: !!parsed.redcapApiUrl,
+        hasRedcapToken: !!parsed.redcapApiToken,
+        baseEmail: parsed.forwarded ? (parsed.baseEmail || '') : ''
+      };
+    })
+    .sort((a, b) => a.base.localeCompare(b.base));
+
+  return { success: true, studies: studies };
+}
+
+// Creates or updates a study. Any of redcapApiUrl/redcapApiToken/
+// baseEmail/accessTokenField/forwardingStatusField/deviceEmailField left
+// blank when editing an existing study keeps that study's current value
+// — this endpoint never has to round-trip secrets back to the browser
+// just so an edit can preserve them.
+function handleAdminRegisterStudy(study) {
+  if (!study || typeof study !== 'object') {
+    return { success: false, error: 'Missing study data.' };
+  }
+
+  const base = sanitizeBase_(study.base);
+  if (!base) {
+    return { success: false, error: 'Invalid or missing base value.' };
+  }
+
+  const props = PropertiesService.getScriptProperties();
+  const propKey = 'STUDY_' + base.toUpperCase();
+
+  let existing = {};
+  const existingRaw = props.getProperty(propKey);
+  if (existingRaw) {
+    try { existing = JSON.parse(existingRaw); } catch (err) { existing = {}; }
+  }
+
+  const config = {
+    base: base,
+    redcapApiUrl: String(study.redcapApiUrl || existing.redcapApiUrl || '').trim(),
+    redcapApiToken: String(study.redcapApiToken || existing.redcapApiToken || '').trim(),
+    forwarded: study.forwarded !== undefined ? !!study.forwarded : !!existing.forwarded
+  };
+
+  if (!config.redcapApiUrl || !config.redcapApiToken) {
+    return { success: false, error: 'REDCap URL and token are required (existing values are kept if left blank while editing).' };
+  }
+
+  if (config.forwarded) {
+    config.baseEmail = String(study.baseEmail || existing.baseEmail || '').trim();
+    if (!config.baseEmail) {
+      return { success: false, error: 'baseEmail is required when forwarded is true.' };
+    }
+  }
+
+  ['accessTokenField', 'forwardingStatusField', 'deviceEmailField'].forEach((key) => {
+    const value = String(study[key] || existing[key] || '').trim();
+    if (value) config[key] = value;
+  });
+
+  props.setProperty(propKey, JSON.stringify(config));
+
+  let relayAlias = null;
+  if (config.forwarded) {
+    const gmailUsername = props.getProperty('GMAIL_USERNAME');
+    if (gmailUsername) {
+      relayAlias = gmailUsername + '+' + base + '@gmail.com';
+    }
+  }
+
+  return { success: true, base: base, forwarded: config.forwarded, relayAlias: relayAlias };
+}
+
+function handleAdminUnregisterStudy(base) {
+  const clean = sanitizeBase_(base);
+  if (!clean) {
+    return { success: false, error: 'Invalid base value.' };
+  }
+  PropertiesService.getScriptProperties().deleteProperty('STUDY_' + clean.toUpperCase());
+  return { success: true };
 }
 
 // ── Action: verify ─────────────────────────────────────────────────────

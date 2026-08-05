@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudyLink Admin</title>
+<meta name="robots" content="noindex, nofollow" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2ebdd;
+    --card-bg: #fffdf8;
+    --text: #332a1f;
+    --muted: #8c8071;
+    --primary: #2f5d52;
+    --primary-dark: #21453c;
+    --success: #4d7c5f;
+    --error: #b0503a;
+    --border: #e5dcc6;
+    --radius: 10px;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Public Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    font-family: var(--font-body);
+    color: var(--text);
+    padding: 32px 20px 80px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(64, 48, 24, 0.08);
+    padding: 28px 26px;
+  }
+  .eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 0 0 6px;
+  }
+  h2 {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 14px;
+  }
+  p.subtitle { margin: 0 0 20px; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+  label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 5px; margin-top: 14px; }
+  label:first-of-type { margin-top: 0; }
+  input[type="text"], input[type="password"], input[type="url"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 0.92rem;
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  input::placeholder { color: #b3a892; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .checkbox-row input { width: auto; }
+  .checkbox-row label { margin: 0; }
+  .hint { font-size: 0.74rem; color: var(--muted); margin-top: 4px; }
+  .hidden { display: none !important; }
+  button {
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fdfaf3;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--primary-dark); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  button.secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover:not(:disabled) { background: #eae2d2; }
+  button.danger { background: var(--card-bg); color: var(--error); border: 1px solid var(--error); }
+  button.danger:hover:not(:disabled) { background: #fbeee9; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .status-msg { font-size: 0.85rem; margin-top: 12px; min-height: 1.1em; }
+  .status-msg.error { color: var(--error); }
+  .status-msg.success { color: var(--success); }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,0,0,0.12);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 4px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  td.actions { white-space: nowrap; text-align: right; }
+  td.actions button { padding: 5px 10px; font-size: 0.78rem; margin-left: 6px; }
+  .pill {
+    display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; background: var(--bg); border: 1px solid var(--border);
+  }
+  .snippet {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-family: monospace; font-size: 0.78rem; white-space: pre-wrap;
+    word-break: break-all; margin-top: 10px;
+  }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <div class="card">
+      <p class="eyebrow">StudyLink Portal</p>
+      <h1>Admin</h1>
+      <p class="subtitle">
+        Register, edit, or remove studies on a deployment without opening the Apps Script
+        editor. Requires that deployment's admin token (set once via <code>setAdminToken_()</code>
+        in <code>Code.gs</code>). This page is public, like the rest of the site — nothing here
+        works without the correct token, and it's never echoed back once stored.
+      </p>
+
+      <label for="deployUrl">Apps Script URL (the deployment's <code>/exec</code> URL)</label>
+      <input type="url" id="deployUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
+
+      <label for="adminToken">Admin token</label>
+      <input type="password" id="adminToken" placeholder="Enter the admin token" autocomplete="off" />
+
+      <div class="row">
+        <button type="button" id="loadBtn">Load studies</button>
+      </div>
+      <div class="status-msg" id="connectStatus" aria-live="polite"></div>
+    </div>
+
+    <div class="card hidden" id="studiesCard">
+      <h2>Registered studies</h2>
+      <div id="studiesTableWrap"></div>
+    </div>
+
+    <div class="card hidden" id="formCard">
+      <h2 id="formHeading">Register a study</h2>
+      <p class="subtitle" id="formSubtitle">
+        <code>base</code> is the value used in <code>studies.json</code> and participant
+        links (<code>?base=</code>). For a dedicated study, it must exactly match this
+        deployment's own Gmail username.
+      </p>
+
+      <label for="fBase">base</label>
+      <input type="text" id="fBase" placeholder="e.g. samma.study" autocomplete="off" />
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="fForwarded" />
+        <label for="fForwarded">Forwarded (mail relayed in from another researcher's own Gmail)</label>
+      </div>
+
+      <div id="baseEmailGroup" class="hidden">
+        <label for="fBaseEmail">Researcher's own Gmail address</label>
+        <input type="text" id="fBaseEmail" placeholder="their-study-inbox@gmail.com" autocomplete="off" />
+      </div>
+
+      <label for="fRedcapUrl">REDCap API URL</label>
+      <input type="text" id="fRedcapUrl" placeholder="https://your-redcap-instance.org/api/" autocomplete="off" />
+
+      <label for="fRedcapToken">REDCap API token</label>
+      <input type="password" id="fRedcapToken" placeholder="Leave blank to keep existing (when editing)" autocomplete="off" />
+
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer; font-size:0.85rem; font-weight:600;">Advanced (REDCap field name overrides)</summary>
+        <label for="fAccessField">Access token field</label>
+        <input type="text" id="fAccessField" placeholder="patient_token (default)" autocomplete="off" />
+        <label for="fForwardingField">Forwarding status field</label>
+        <input type="text" id="fForwardingField" placeholder="forwarding_status (default)" autocomplete="off" />
+        <label for="fDeviceField">Device email field</label>
+        <input type="text" id="fDeviceField" placeholder="device_email (default)" autocomplete="off" />
+      </details>
+
+      <div class="row">
+        <button type="button" id="saveBtn">Save study</button>
+        <button type="button" class="secondary" id="cancelEditBtn">Cancel edit</button>
+      </div>
+      <div class="status-msg" id="formStatus" aria-live="polite"></div>
+      <div id="snippetWrap" class="hidden">
+        <p class="hint">Add this to <code>studies.json</code> and push:</p>
+        <div class="snippet" id="snippet"></div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  const deployUrlInput = document.getElementById('deployUrl');
+  const adminTokenInput = document.getElementById('adminToken');
+  const loadBtn = document.getElementById('loadBtn');
+  const connectStatus = document.getElementById('connectStatus');
+
+  const studiesCard = document.getElementById('studiesCard');
+  const studiesTableWrap = document.getElementById('studiesTableWrap');
+
+  const formCard = document.getElementById('formCard');
+  const formHeading = document.getElementById('formHeading');
+  const formStatus = document.getElementById('formStatus');
+  const fBase = document.getElementById('fBase');
+  const fForwarded = document.getElementById('fForwarded');
+  const baseEmailGroup = document.getElementById('baseEmailGroup');
+  const fBaseEmail = document.getElementById('fBaseEmail');
+  const fRedcapUrl = document.getElementById('fRedcapUrl');
+  const fRedcapToken = document.getElementById('fRedcapToken');
+  const fAccessField = document.getElementById('fAccessField');
+  const fForwardingField = document.getElementById('fForwardingField');
+  const fDeviceField = document.getElementById('fDeviceField');
+  const saveBtn = document.getElementById('saveBtn');
+  const cancelEditBtn = document.getElementById('cancelEditBtn');
+  const snippetWrap = document.getElementById('snippetWrap');
+  const snippet = document.getElementById('snippet');
+
+  let editingBase = null; // non-null while editing an existing study
+
+  // Convenience only — stored in this browser's own localStorage, never
+  // sent anywhere but the Apps Script URL you provide.
+  deployUrlInput.value = localStorage.getItem('studylink_admin_url') || '';
+  adminTokenInput.value = localStorage.getItem('studylink_admin_token') || '';
+
+  fForwarded.addEventListener('change', () => {
+    baseEmailGroup.classList.toggle('hidden', !fForwarded.checked);
+  });
+
+  async function callAdmin(action, extra) {
+    const url = deployUrlInput.value.trim();
+    if (!url) throw new Error('Enter the Apps Script URL first.');
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action, adminToken: adminTokenInput.value }, extra))
+    });
+    if (!response.ok) throw new Error('Network error (' + response.status + ')');
+    return response.json();
+  }
+
+  loadBtn.addEventListener('click', async () => {
+    connectStatus.textContent = '';
+    connectStatus.className = 'status-msg';
+    loadBtn.disabled = true;
+    loadBtn.innerHTML = '<span class="spinner"></span>';
+
+    localStorage.setItem('studylink_admin_url', deployUrlInput.value.trim());
+    localStorage.setItem('studylink_admin_token', adminTokenInput.value);
+
+    try {
+      const result = await callAdmin('adminListStudies', {});
+      if (!result.success) {
+        connectStatus.textContent = result.error || 'Could not load studies.';
+        connectStatus.className = 'status-msg error';
+        studiesCard.classList.add('hidden');
+        formCard.classList.add('hidden');
+        return;
+      }
+      renderStudies(result.studies || []);
+      studiesCard.classList.remove('hidden');
+      formCard.classList.remove('hidden');
+      connectStatus.textContent = 'Connected.';
+      connectStatus.className = 'status-msg success';
+    } catch (err) {
+      connectStatus.textContent = 'Could not reach that URL: ' + err.message;
+      connectStatus.className = 'status-msg error';
+    } finally {
+      loadBtn.disabled = false;
+      loadBtn.textContent = 'Load studies';
+    }
+  });
+
+  function renderStudies(studies) {
+    if (studies.length === 0) {
+      studiesTableWrap.innerHTML = '<p class="hint">No studies registered on this deployment yet.</p>';
+      return;
+    }
+    const rows = studies.map((s) => {
+      const kind = s.forwarded
+        ? '<span class="pill">forwarded</span>'
+        : '<span class="pill">dedicated</span>';
+      const redcapOk = s.hasRedcapUrl && s.hasRedcapToken;
+      return '<tr>' +
+        '<td>' + escapeHtml(s.base) + '</td>' +
+        '<td>' + kind + '</td>' +
+        '<td>' + (redcapOk ? 'OK' : '<span style="color:var(--error)">incomplete</span>') + '</td>' +
+        '<td class="actions">' +
+          '<button type="button" class="secondary" data-edit="' + escapeHtml(s.base) + '">Edit</button>' +
+          '<button type="button" class="danger" data-remove="' + escapeHtml(s.base) + '">Remove</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    studiesTableWrap.innerHTML = '<table><thead><tr><th>base</th><th>kind</th><th>REDCap</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+
+    studiesTableWrap.querySelectorAll('[data-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => startEdit(studies.find((s) => s.base === btn.dataset.edit)));
+    });
+    studiesTableWrap.querySelectorAll('[data-remove]').forEach((btn) => {
+      btn.addEventListener('click', () => removeStudy(btn.dataset.remove));
+    });
+  }
+
+  function startEdit(study) {
+    if (!study) return;
+    editingBase = study.base;
+    formHeading.textContent = 'Edit "' + study.base + '"';
+    fBase.value = study.base;
+    fBase.disabled = true;
+    fForwarded.checked = study.forwarded;
+    baseEmailGroup.classList.toggle('hidden', !study.forwarded);
+    fBaseEmail.value = study.baseEmail || '';
+    fRedcapUrl.value = '';
+    fRedcapUrl.placeholder = 'Leave blank to keep existing';
+    fRedcapToken.value = '';
+    fAccessField.value = '';
+    fForwardingField.value = '';
+    fDeviceField.value = '';
+    formStatus.textContent = '';
+    snippetWrap.classList.add('hidden');
+    window.scrollTo({ top: formCard.offsetTop - 20, behavior: 'smooth' });
+  }
+
+  cancelEditBtn.addEventListener('click', resetForm);
+
+  // Full reset: fields + status/snippet. Used by "Cancel edit".
+  function resetForm() {
+    resetFormFields();
+    formStatus.textContent = '';
+    snippetWrap.classList.add('hidden');
+  }
+
+  // Fields only — used right after a successful save, where the status
+  // message and studies.json snippet just shown need to stay visible
+  // rather than being wiped immediately.
+  function resetFormFields() {
+    editingBase = null;
+    formHeading.textContent = 'Register a study';
+    fBase.value = '';
+    fBase.disabled = false;
+    fForwarded.checked = false;
+    baseEmailGroup.classList.add('hidden');
+    fBaseEmail.value = '';
+    fRedcapUrl.value = '';
+    fRedcapUrl.placeholder = 'https://your-redcap-instance.org/api/';
+    fRedcapToken.value = '';
+    fRedcapToken.placeholder = 'Leave blank to keep existing (when editing)';
+    fAccessField.value = '';
+    fForwardingField.value = '';
+    fDeviceField.value = '';
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    const base = fBase.value.trim();
+    if (!base) {
+      formStatus.textContent = 'base is required.';
+      formStatus.className = 'status-msg error';
+      return;
+    }
+
+    const study = {
+      base: base,
+      forwarded: fForwarded.checked,
+      redcapApiUrl: fRedcapUrl.value.trim(),
+      redcapApiToken: fRedcapToken.value.trim(),
+      baseEmail: fBaseEmail.value.trim(),
+      accessTokenField: fAccessField.value.trim(),
+      forwardingStatusField: fForwardingField.value.trim(),
+      deviceEmailField: fDeviceField.value.trim()
+    };
+
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner"></span>';
+    formStatus.textContent = '';
+    snippetWrap.classList.add('hidden');
+
+    try {
+      const result = await callAdmin('adminRegisterStudy', { study: study });
+      if (!result.success) {
+        formStatus.textContent = result.error || 'Could not save study.';
+        formStatus.className = 'status-msg error';
+        return;
+      }
+      formStatus.textContent = 'Saved.' + (result.relayAlias ? ' Relay alias: ' + result.relayAlias : '');
+      formStatus.className = 'status-msg success';
+
+      const deployUrl = deployUrlInput.value.trim();
+      snippet.textContent = '"' + base + '": {\n  "name": "' + base + '",\n  "appsScriptUrl": "' + deployUrl + '"\n}';
+      snippetWrap.classList.remove('hidden');
+
+      resetFormFields();
+      loadBtn.click();
+    } catch (err) {
+      formStatus.textContent = 'Could not reach the server: ' + err.message;
+      formStatus.className = 'status-msg error';
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save study';
+    }
+  });
+
+  async function removeStudy(base) {
+    if (!confirm('Remove study "' + base + '"? This cannot be undone from here.')) return;
+    try {
+      const result = await callAdmin('adminUnregisterStudy', { base: base });
+      if (!result.success) {
+        alert(result.error || 'Could not remove study.');
+        return;
+      }
+      loadBtn.click();
+    } catch (err) {
+      alert('Could not reach the server: ' + err.message);
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>
