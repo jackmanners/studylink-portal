@@ -53,6 +53,12 @@ script; the `/exec` URL stays the same across versions as long as you edit the e
 deployment rather than creating a new one. Script Properties persist across redeployments —
 you only need to set them once.
 
+**Checking a deployment is set up correctly:** the frontend's "Check system status" link (on
+the sign-in screen) calls a `healthCheck` action that needs no token — it confirms Script
+Properties are set, that REDCap is reachable and all four configured field names actually
+exist there, and that the script can read Gmail. Use it after every new deployment instead of
+debugging through a participant-facing error.
+
 ## 2. Register the study in studies.json
 
 One frontend deployment can serve any number of studies. Which study a visitor lands on is
@@ -138,3 +144,9 @@ instead of using `studies.json`.
   shows the newest prominently and the rest behind an auto-expand/collapse toggle. This means
   a verified session can see everything sent to that device's address in the last day, not
   just a single one-time code.
+- The Gmail search covers `in:anywhere` (including Spam and Trash), not just Inbox — third-party
+  device-vendor mail is exactly the kind of thing Gmail sometimes misfires on, and a code
+  silently landing in Spam would otherwise look like total failure with nothing to debug.
+- `healthCheck` is a public, unauthenticated action (anyone with the deployment URL can call
+  it) by design, so it deliberately returns only pass/fail booleans and short diagnostic
+  strings — never the actual REDCap token, URL, or other secret values.

@@ -28,8 +28,10 @@
     margin: 0;
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 20px;
     background: var(--bg);
     font-family: var(--font-body);
     color: var(--text);
@@ -325,15 +327,78 @@
     padding: 0;
   }
   .logout-link:hover { color: var(--text); background: none; }
+
+  .status-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    background: var(--bg);
+  }
+  .status-icon.warn {
+    background: #f3e0d8;
+    color: var(--error);
+    font-family: var(--font-display);
+    font-weight: 700;
+  }
+
+  .health-check-trigger {
+    margin-top: 10px;
+  }
+  .health-check-item {
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .health-check-item:last-child { border-bottom: none; }
+  .health-check-mark {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .health-check-mark.ok { background: var(--success); }
+  .health-check-mark.fail { background: var(--error); }
+  .health-check-detail {
+    margin-top: 2px;
+    font-size: 0.74rem;
+    color: var(--muted);
+    word-break: break-word;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+    max-width: 420px;
+  }
+  footer a {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+  footer a:hover { color: var(--primary-dark); }
 </style>
 </head>
 <body>
 
   <!-- Shown while studies.json loads, or if the ?study= link is missing/unknown -->
   <div class="card" id="statusCard">
+    <div class="status-icon" id="statusIcon"><span class="loader"><span></span><span></span><span></span><span></span><span></span></span></div>
     <p class="eyebrow">StudyLink Portal</p>
     <h1 id="statusHeading">Loading…</h1>
-    <p class="subtitle" id="statusMessage">One moment.</p>
+    <p class="subtitle" id="statusMessage" aria-live="polite">One moment.</p>
   </div>
 
   <!-- Login / code retrieval, as a horizontal flip card -->
@@ -348,36 +413,51 @@
         <form id="loginForm">
           <label for="patientToken">Access Token</label>
           <input type="text" id="patientToken" placeholder="Enter your token" required autocomplete="off" />
-          <div class="error-msg" id="loginError"></div>
+          <div class="error-msg" id="loginError" role="alert"></div>
           <button type="submit" id="loginBtn">
             <span id="loginBtnText">Continue</span>
           </button>
         </form>
+        <button type="button" class="logout-link health-check-trigger" id="healthCheckBtn">Check system status</button>
       </div>
 
-      <!-- Code retrieval screen (back face) -->
-      <div class="card flip-face flip-face-back" id="codeCard">
-        <div class="participant-badge" id="participantBadge"></div>
-        <h1 id="codeHeading">Looking for your code</h1>
-        <p class="subtitle">We're watching your device's inbox — this updates automatically.</p>
+      <!-- Back face: code retrieval screen, or system-status panel -->
+      <div class="card flip-face flip-face-back" id="backFace">
+        <div id="codeCard">
+          <div class="participant-badge" id="participantBadge"></div>
+          <h1 id="codeHeading">Looking for your code</h1>
+          <p class="subtitle">We're watching your device's inbox — this updates automatically.</p>
 
-        <button id="fetchBtn">Waiting for code…</button>
-        <div class="status-line" id="statusLine"></div>
+          <button id="fetchBtn">Waiting for code…</button>
+          <div class="status-line" id="statusLine" aria-live="polite"></div>
 
-        <div class="code-display hidden" id="codeDisplay">
-          <div class="code-value" id="codeValue"></div>
-          <div class="code-subject" id="codeSubject"></div>
-          <div class="code-age" id="codeAge"></div>
+          <div class="code-display hidden" id="codeDisplay">
+            <div class="code-value" id="codeValue"></div>
+            <div class="code-subject" id="codeSubject"></div>
+            <div class="code-age" id="codeAge"></div>
+          </div>
+
+          <button type="button" class="history-toggle hidden" id="historyToggle"></button>
+          <div class="code-history hidden" id="codeHistory"></div>
+
+          <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
         </div>
 
-        <button type="button" class="history-toggle hidden" id="historyToggle"></button>
-        <div class="code-history hidden" id="codeHistory"></div>
-
-        <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
+        <div id="healthCard" class="hidden">
+          <p class="eyebrow">StudyLink Portal</p>
+          <h1>System status</h1>
+          <p class="subtitle">Checks the backend's config, REDCap connectivity, and Gmail access.</p>
+          <div id="healthResults" aria-live="polite"></div>
+          <button type="button" class="logout-link health-check-trigger" id="healthBackBtn">Back to sign in</button>
+        </div>
       </div>
 
     </div>
   </div>
+
+  <footer>
+    Need help? Contact <a href="mailto:jack.manners@flinders.edu.au">Jack Manners</a> at Flinders University.
+  </footer>
 
 <script>
   // ── Configuration ────────────────────────────────────────────────────
@@ -402,6 +482,7 @@
   let autoRecheckTimer = null;
 
   const statusCard = document.getElementById('statusCard');
+  const statusIcon = document.getElementById('statusIcon');
   const statusHeading = document.getElementById('statusHeading');
   const statusMessage = document.getElementById('statusMessage');
 
@@ -466,6 +547,8 @@
   }
 
   function showStudyError(heading, message) {
+    statusIcon.className = 'status-icon warn';
+    statusIcon.textContent = '!';
     statusHeading.textContent = heading;
     statusMessage.textContent = message;
   }
@@ -683,6 +766,47 @@
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  // ── System status (health check) ─────────────────────────────────────
+  const healthCheckBtn = document.getElementById('healthCheckBtn');
+  const healthBackBtn = document.getElementById('healthBackBtn');
+  const healthCard = document.getElementById('healthCard');
+  const healthResults = document.getElementById('healthResults');
+  const codeCardPanel = document.getElementById('codeCard');
+
+  healthCheckBtn.addEventListener('click', async () => {
+    codeCardPanel.classList.add('hidden');
+    healthCard.classList.remove('hidden');
+    healthResults.innerHTML = '<div class="loader" style="color: var(--muted); justify-content: flex-start;">' +
+      '<span></span><span></span><span></span><span></span><span></span></div>';
+    flipInner.classList.add('flipped');
+
+    try {
+      const result = await callBackend('healthCheck', {});
+      renderHealthResults(result.checks || []);
+    } catch (err) {
+      healthResults.innerHTML = '<p class="subtitle">Could not reach the server.</p>';
+    }
+  });
+
+  healthBackBtn.addEventListener('click', () => {
+    flipInner.classList.remove('flipped');
+    healthCard.classList.add('hidden');
+    codeCardPanel.classList.remove('hidden');
+  });
+
+  function renderHealthResults(checks) {
+    if (checks.length === 0) {
+      healthResults.innerHTML = '<p class="subtitle">No results returned.</p>';
+      return;
+    }
+    healthResults.innerHTML = checks.map((c) => {
+      const mark = c.ok ? '<span class="health-check-mark ok">✓</span>' : '<span class="health-check-mark fail">✕</span>';
+      const detail = c.detail ? '<div class="health-check-detail">' + escapeHtml(c.detail) + '</div>' : '';
+      return '<div class="health-check-item">' + mark +
+        '<div><div>' + escapeHtml(c.label) + '</div>' + detail + '</div></div>';
+    }).join('');
   }
 </script>
 </body>

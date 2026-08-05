@@ -94,10 +94,16 @@ function doPost(e) {
   }
 
   const action = body.action;
-  const token = sanitizeToken(body.token);
 
+  // healthCheck is a config/connectivity diagnostic, not a participant
+  // action — it doesn't take or need a token.
+  if (action === 'healthCheck') {
+    return jsonOutput(handleHealthCheck());
+  }
+
+  const token = sanitizeToken(body.token);
   if (!token) {
-    return jsonOutput({ success: false, error: 'Missing or invalid access token.' });
+    return jsonOutput({ success: false, error: 'Please enter your access token.' });
   }
 
   try {
@@ -113,6 +119,76 @@ function doPost(e) {
   }
 }
 
+// ── Action: healthCheck ─────────────────────────────────────────────────
+// Public diagnostic — deliberately returns only pass/fail + short
+// messages, never actual secret values (REDCap token/URL, etc.), since
+// this endpoint takes no token and anyone with the deployment URL can
+// call it.
+
+function handleHealthCheck() {
+  const checks = [];
+  let config;
+
+  try {
+    config = getConfig_();
+    checks.push({ label: 'Script Properties configured', ok: true });
+  } catch (err) {
+    checks.push({ label: 'Script Properties configured', ok: false, detail: err.message });
+    return { checks: checks, ok: false };
+  }
+
+  checks.push(checkRedcap_(config));
+  checks.push(checkGmail_());
+
+  return { checks: checks, ok: checks.every((c) => c.ok) };
+}
+
+// REDCap validates requested field names against the project's data
+// dictionary even when the filter matches zero records, so a single
+// export call against a filter that can never match confirms both
+// connectivity and that all four configured field names actually exist.
+function checkRedcap_(config) {
+  const fields = ['record_id', config.ACCESS_TOKEN_FIELD, config.FORWARDING_STATUS_FIELD, config.DEVICE_EMAIL_FIELD];
+  const payload = {
+    token: config.REDCAP_API_TOKEN,
+    content: 'record',
+    format: 'json',
+    type: 'flat',
+    filterLogic: "[record_id]='__studylink_healthcheck_no_such_record__'",
+    returnFormat: 'json'
+  };
+  fields.forEach((f, i) => { payload['fields[' + i + ']'] = f; });
+
+  let response;
+  try {
+    response = UrlFetchApp.fetch(config.REDCAP_API_URL, {
+      method: 'post',
+      payload: payload,
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    return { label: 'REDCap reachable, fields exist', ok: false, detail: 'Request failed: ' + err.message };
+  }
+
+  if (response.getResponseCode() === 200) {
+    return { label: 'REDCap reachable, fields exist (' + fields.join(', ') + ')', ok: true };
+  }
+  return {
+    label: 'REDCap reachable, fields exist',
+    ok: false,
+    detail: 'HTTP ' + response.getResponseCode() + ': ' + response.getContentText().substring(0, 200)
+  };
+}
+
+function checkGmail_() {
+  try {
+    GmailApp.search('in:inbox', 0, 1);
+    return { label: 'Gmail access working', ok: true };
+  } catch (err) {
+    return { label: 'Gmail access working', ok: false, detail: err.message };
+  }
+}
+
 // ── Action: verify ─────────────────────────────────────────────────────
 
 function handleVerify(token) {
@@ -124,12 +200,12 @@ function handleVerify(token) {
 
   if (!record) {
     registerFailedAttempt(token);
-    return { success: false, error: 'Invalid access token.' };
+    return { success: false, error: 'That access token wasn\'t recognized. Please check it and try again.' };
   }
 
   if (record.forwarding_status !== '1') {
     registerFailedAttempt(token);
-    return { success: false, error: 'This device is not active for forwarding.' };
+    return { success: false, error: 'Your device isn\'t set up yet. Please contact your study coordinator.' };
   }
 
   clearFailedAttempts(token);
@@ -153,8 +229,11 @@ function handleFetchCode(token) {
 
   const address = session.deviceEmail || buildAlias(session.recordId);
   // Not restricted to is:unread — we want every matching email in the
-  // window, not just ones not yet marked read.
-  const query = 'to:' + address + ' newer_than:1d';
+  // window, not just ones not yet marked read. in:anywhere includes Spam
+  // and Trash — third-party device-vendor mail is exactly the kind of
+  // thing Gmail sometimes misfires on, and a code silently landing in
+  // Spam would otherwise look like total failure with nothing to debug.
+  const query = 'to:' + address + ' newer_than:1d in:anywhere';
 
   const threads = GmailApp.search(query, 0, MAX_MATCHES_RETURNED);
   if (threads.length === 0) {
