@@ -393,7 +393,7 @@
 </head>
 <body>
 
-  <!-- Shown while studies.json loads, or if the ?study= link is missing/unknown -->
+  <!-- Shown while studies.json loads, or if the ?base= link is missing/unknown -->
   <div class="card" id="statusCard">
     <div class="status-icon" id="statusIcon"><span class="loader"><span></span><span></span><span></span><span></span><span></span></span></div>
     <p class="eyebrow">StudyLink Portal</p>
@@ -462,15 +462,17 @@
 <script>
   // ── Configuration ────────────────────────────────────────────────────
   // One frontend deployment serves every study. Which study a visitor
-  // hits is picked by a `?study=slug` query param, resolved at load time
-  // against studies.json (a public map of slug -> Apps Script URL + name).
-  // Adding a new study is: stand up its own Apps Script backend, then add
-  // one entry to studies.json and push — no frontend redeploy needed.
+  // hits is picked by a `?base=value` query param, resolved at load time
+  // against studies.json (a public map of base -> Apps Script URL + name).
+  // `base` is also the exact value the backend uses to key a hub study's
+  // config and derive its relay alias — see backend/Code.gs. Adding a new
+  // study is: stand up (or register on a hub) its Apps Script backend,
+  // then add one entry to studies.json and push — no frontend redeploy.
   const STUDIES_JSON_URL = 'studies.json';
 
   let APPS_SCRIPT_URL = null;
   let STUDY_NAME = null;
-  let STUDY_SLUG = null;
+  let STUDY_BASE = null;
 
   const POLL_INTERVAL_MS = 5000;
   const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
@@ -512,8 +514,8 @@
   initStudy();
 
   async function initStudy() {
-    const slug = new URLSearchParams(window.location.search).get('study');
-    if (!slug) {
+    const base = new URLSearchParams(window.location.search).get('base');
+    if (!base) {
       showStudyError('Missing study link', 'This link is missing a study identifier. Please use the exact link your research team provided.');
       return;
     }
@@ -527,7 +529,7 @@
       return;
     }
 
-    const study = studies[slug];
+    const study = studies[base];
     if (!study || !study.appsScriptUrl) {
       showStudyError('Study not found', 'This link doesn\'t match a known study. Please use the exact link your research team provided.');
       return;
@@ -535,7 +537,7 @@
 
     APPS_SCRIPT_URL = study.appsScriptUrl;
     STUDY_NAME = study.name || 'StudyLink Portal';
-    STUDY_SLUG = slug;
+    STUDY_BASE = base;
     document.title = STUDY_NAME;
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
 
@@ -557,7 +559,7 @@
 
   // Sending as text/plain avoids a CORS preflight against the Apps Script
   // endpoint (which cannot answer OPTIONS). The body is still JSON.
-  // `study` is always included so a shared hub deployment (serving
+  // `base` is always included so a shared hub deployment (serving
   // multiple forwarded-mail studies from one Apps Script) knows which
   // study's config to use — a dedicated single-study deployment just
   // ignores it.
@@ -565,7 +567,7 @@
     const response = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action: action, study: STUDY_SLUG }, extra))
+      body: JSON.stringify(Object.assign({ action: action, base: STUDY_BASE }, extra))
     });
     if (!response.ok) {
       throw new Error('Network error (' + response.status + ')');

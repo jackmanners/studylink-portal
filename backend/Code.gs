@@ -20,20 +20,25 @@
  * 1. Dedicated (default): this script's own Gmail account IS the study's
  *    device-verification inbox. Config is flat Script Properties
  *    (REDCAP_API_URL etc.) — see setup_() below. This is unchanged from
- *    earlier versions and needs no `study` slug to work.
+ *    earlier versions and needs no `base` value to work.
  *
  * 2. Hub (forwarded): this script's Gmail account is a shared *hub* that
  *    OTHER researchers forward their own device-verification mail into,
  *    without ever sharing account access — they add this hub's address
  *    as a Gmail forwarding target in their own inbox and filter matching
- *    mail to it. Each such study is registered here via registerStudy_()
- *    with its own REDCap config, its own relay alias (e.g.
- *    hub+studyslug@gmail.com), and the researcher's own base email (used
- *    only to compute what a participant's original alias looks like).
- *    The frontend sends a `study` slug on every request; if a matching
- *    STUDY_<SLUG> Script Property exists, hub mode is used for that
+ *    mail to it, forwarding to <hub username>+<base>@gmail.com where
+ *    `base` is the same value used in that study's `?base=` link. Each
+ *    study is registered here via registerStudy_() with its own REDCap
+ *    URL/token and the researcher's own base email (used only to compute
+ *    what a participant's original alias looks like) — the relay alias
+ *    itself is never specified separately; it's always derived from
+ *    HUB_GMAIL_USERNAME (this hub's own Gmail username) + the study's
+ *    `base`, so there's exactly one formula to give every researcher,
+ *    not a per-study value that has to match exactly by hand.
+ *    The frontend sends a `base` value on every request; if a matching
+ *    STUDY_<BASE> Script Property exists, hub mode is used for that
  *    request — otherwise it falls back to dedicated/flat config,
- *    ignoring the slug. A single deployment can mix both: serve its own
+ *    ignoring it. A single deployment can mix both: serve its own
  *    dedicated study AND host any number of forwarded ones.
  *
  * Secrets are NOT stored in this file. They live in Script Properties,
@@ -68,17 +73,17 @@ const OPTIONAL_PROPERTY_DEFAULTS = {
 const DEDICATED_SEARCH_LIMIT = 10;
 const HUB_SEARCH_LIMIT = 50;
 
-function getConfig_(studySlug) {
+function getConfig_(base) {
   const props = PropertiesService.getScriptProperties();
 
-  if (studySlug) {
-    const raw = props.getProperty('STUDY_' + studySlug.toUpperCase());
+  if (base) {
+    const raw = props.getProperty('STUDY_' + base.toUpperCase());
     if (raw) {
-      return normalizeHubConfig_(raw, studySlug);
+      return normalizeHubConfig_(raw, base, props);
     }
-    // No matching hub registration for this slug — fall through to
+    // No matching hub registration for this base — fall through to
     // dedicated/flat config below, so a non-hub deployment just ignores
-    // an unrecognized slug rather than failing.
+    // an unrecognized value rather than failing.
   }
 
   const config = {};
@@ -96,18 +101,26 @@ function getConfig_(studySlug) {
   return config;
 }
 
-function normalizeHubConfig_(rawJson, slug) {
+function normalizeHubConfig_(rawJson, base, props) {
   let raw;
   try {
     raw = JSON.parse(rawJson);
   } catch (err) {
-    throw new Error('Malformed STUDY_' + slug.toUpperCase() + ' config (invalid JSON).');
+    throw new Error('Malformed STUDY_' + base.toUpperCase() + ' config (invalid JSON).');
   }
 
-  const required = ['redcapApiUrl', 'redcapApiToken', 'baseEmail', 'relayAlias'];
+  const required = ['redcapApiUrl', 'redcapApiToken', 'baseEmail'];
   const missing = required.filter((key) => !raw[key]);
   if (missing.length > 0) {
-    throw new Error('Study "' + slug + '" config missing: ' + missing.join(', '));
+    throw new Error('Study "' + base + '" config missing: ' + missing.join(', '));
+  }
+
+  // Hub's own Gmail username (the part before @gmail.com) — assumes
+  // gmail.com for now, same as the rest of this script's plus-addressing
+  // and forwarding logic, which is Gmail-specific either way.
+  const hubUsername = props.getProperty('HUB_GMAIL_USERNAME');
+  if (!hubUsername) {
+    throw new Error('Missing Script Property: HUB_GMAIL_USERNAME (required for any hub-mode study).');
   }
 
   return {
@@ -117,7 +130,10 @@ function normalizeHubConfig_(rawJson, slug) {
     ACCESS_TOKEN_FIELD: raw.accessTokenField || OPTIONAL_PROPERTY_DEFAULTS.ACCESS_TOKEN_FIELD,
     FORWARDING_STATUS_FIELD: raw.forwardingStatusField || OPTIONAL_PROPERTY_DEFAULTS.FORWARDING_STATUS_FIELD,
     DEVICE_EMAIL_FIELD: raw.deviceEmailField || OPTIONAL_PROPERTY_DEFAULTS.DEVICE_EMAIL_FIELD,
-    RELAY_ALIAS: raw.relayAlias,
+    // Always derived, never specified per study: <hub username>+<base>@gmail.com.
+    // One formula every researcher gets, instead of a value that has to
+    // match a per-study setting exactly by hand.
+    RELAY_ALIAS: hubUsername + '+' + base + '@gmail.com',
     HUB: true
   };
 }
@@ -136,34 +152,51 @@ function setup_() {
   });
 }
 
+// Required once per hub-mode deployment (not per study) — this hub's own
+// Gmail username (the part before @gmail.com). Every hub study's relay
+// alias is derived from this plus its `base` value, so it only needs to
+// be set once here, regardless of how many studies the hub serves.
+function setupHub_() {
+  PropertiesService.getScriptProperties().setProperty('HUB_GMAIL_USERNAME', 'yourhub');
+}
+
 // One-time helper for registering a NEW forwarded (hub) study on this
 // deployment. Fill in real values, select this function from the
-// dropdown, click Run once. `slug` must exactly match (case-insensitive)
-// the `?study=` value the frontend's studies.json entry uses for this
-// study. `relayAlias` must be the exact address you gave the researcher
-// to forward into — using a distinct alias per study (this hub account's
-// own address, plus-addressed, e.g. hub+slug@gmail.com) is what lets one
-// hub inbox host many studies without their mail getting mixed up.
+// dropdown, click Run once. `base` must exactly match (case-insensitive)
+// the `?base=` value the frontend's studies.json entry uses for this
+// study — it's also what the relay alias is derived from, so give the
+// researcher the resulting address (shown in the log after running this)
+// to forward into. Requires HUB_GMAIL_USERNAME to already be set
+// (setupHub_()).
+//
+// Each study keeps its own REDCap URL + token here, completely separate
+// from every other study's — this is the one thing that's always
+// per-study and can't be shared or derived, since each researcher's
+// REDCap project (often a different institution's REDCap instance
+// entirely) needs its own credential. Nothing about how many studies a
+// hub hosts changes that; it's just one more STUDY_<BASE> property per
+// study, each with its own redcapApiUrl/redcapApiToken pair.
 function registerStudy_() {
-  const slug = 'SLUG_HERE';
+  const base = 'BASE_HERE';
   PropertiesService.getScriptProperties().setProperty(
-    'STUDY_' + slug.toUpperCase(),
+    'STUDY_' + base.toUpperCase(),
     JSON.stringify({
       redcapApiUrl: 'https://their-redcap-instance.org/api/',
       redcapApiToken: 'THEIR_REDCAP_API_TOKEN',
       baseEmail: 'their-study-inbox@gmail.com', // the researcher's OWN Gmail — used only to derive expected +alias addresses, never searched directly
-      relayAlias: 'hub+' + slug + '@gmail.com', // must match what the researcher's Gmail filter forwards to
       accessTokenField: 'patient_token',        // optional, shown are the defaults
       forwardingStatusField: 'forwarding_status',
       deviceEmailField: 'device_email'
     })
   );
+  const hubUsername = PropertiesService.getScriptProperties().getProperty('HUB_GMAIL_USERNAME');
+  Logger.log('Relay alias for this study: ' + hubUsername + '+' + base + '@gmail.com');
 }
 
-// Removes a hub study's registration. Run manually with the right slug.
+// Removes a hub study's registration. Run manually with the right base.
 function unregisterStudy_() {
-  const slug = 'SLUG_HERE';
-  PropertiesService.getScriptProperties().deleteProperty('STUDY_' + slug.toUpperCase());
+  const base = 'BASE_HERE';
+  PropertiesService.getScriptProperties().deleteProperty('STUDY_' + base.toUpperCase());
 }
 
 // Failed-verify lockout: max attempts per token within LOCKOUT_WINDOW_SEC.
@@ -185,12 +218,12 @@ function doPost(e) {
   }
 
   const action = body.action;
-  const studySlug = sanitizeSlug_(body.study);
+  const base = sanitizeBase_(body.base);
 
   // healthCheck is a config/connectivity diagnostic, not a participant
   // action — it doesn't take or need a token.
   if (action === 'healthCheck') {
-    return jsonOutput(handleHealthCheck(studySlug));
+    return jsonOutput(handleHealthCheck(base));
   }
 
   const token = sanitizeToken(body.token);
@@ -200,10 +233,10 @@ function doPost(e) {
 
   try {
     if (action === 'verify') {
-      return jsonOutput(handleVerify(token, studySlug));
+      return jsonOutput(handleVerify(token, base));
     }
     if (action === 'fetchCode') {
-      return jsonOutput(handleFetchCode(token, studySlug));
+      return jsonOutput(handleFetchCode(token, base));
     }
     return jsonOutput({ success: false, error: 'Unknown action.' });
   } catch (err) {
@@ -217,13 +250,13 @@ function doPost(e) {
 // this endpoint takes no token and anyone with the deployment URL can
 // call it.
 
-function handleHealthCheck(studySlug) {
+function handleHealthCheck(base) {
   const checks = [];
   let config;
 
   try {
-    config = getConfig_(studySlug);
-    const mode = config.HUB ? 'hub study "' + studySlug + '"' : 'dedicated/default';
+    config = getConfig_(base);
+    const mode = config.HUB ? 'hub study "' + base + '"' : 'dedicated/default';
     checks.push({ label: 'Config resolved (' + mode + ')', ok: true });
   } catch (err) {
     checks.push({ label: 'Config resolved', ok: false, detail: err.message });
@@ -297,12 +330,12 @@ function checkRelay_(config) {
 
 // ── Action: verify ─────────────────────────────────────────────────────
 
-function handleVerify(token, studySlug) {
+function handleVerify(token, base) {
   if (isLockedOut(token)) {
     return { success: false, error: 'Too many attempts. Please try again later.' };
   }
 
-  const config = getConfig_(studySlug);
+  const config = getConfig_(base);
   const record = findRecordByToken(token, config);
 
   if (!record) {
@@ -328,13 +361,13 @@ function handleVerify(token, studySlug) {
 // Cap on how many matched emails we'll ever return, oldest dropped first.
 const MAX_MATCHES_RETURNED = 10;
 
-function handleFetchCode(token, studySlug) {
+function handleFetchCode(token, base) {
   const session = getSession(token);
   if (!session) {
     return { found: false, error: 'Session expired. Please sign in again.' };
   }
 
-  const config = getConfig_(studySlug);
+  const config = getConfig_(base);
   const expectedAddress = (session.deviceEmail || buildAlias(session.recordId, config)).toLowerCase();
 
   // Not restricted to is:unread — we want every matching email in the
@@ -474,8 +507,8 @@ function sanitizeToken(token) {
   return /^[A-Za-z0-9_-]{4,64}$/.test(str) ? str : null;
 }
 
-function sanitizeSlug_(slug) {
-  const str = String(slug || '').trim();
+function sanitizeBase_(base) {
+  const str = String(base || '').trim();
   return /^[A-Za-z0-9_-]{1,64}$/.test(str) ? str : '';
 }
 

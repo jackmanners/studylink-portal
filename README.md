@@ -64,8 +64,11 @@ debugging through a participant-facing error.
 ## 2. Register the study in studies.json
 
 One frontend deployment can serve any number of studies. Which study a visitor lands on is
-picked by a `?study=slug` query parameter, resolved at page load against
-[studies.json](studies.json) — a plain public map of slug → Apps Script URL + display name:
+picked by a `?base=value` query parameter, resolved at page load against
+[studies.json](studies.json) — a plain public map of base → Apps Script URL + display name.
+This same `base` value is also what a hub deployment uses to key a study's config and derive
+its relay alias (see "Hub mode" below), so it's worth picking something short and meaningful
+rather than an arbitrary code:
 
 ```json
 {
@@ -76,8 +79,8 @@ picked by a `?study=slug` query parameter, resolved at page load against
 }
 ```
 
-Add an entry for your study (pick any URL-safe slug), using the `/exec` URL from step 1. Give
-each participant the link `https://<you>.github.io/studylink-portal/?study=<slug>` — nothing
+Add an entry for your study (pick any URL-safe value), using the `/exec` URL from step 1. Give
+each participant the link `https://<you>.github.io/studylink-portal/?base=<value>` — nothing
 else in the frontend needs to change per study.
 
 `studies.json` is public, same as the rest of this repo — see "Running multiple studies" below
@@ -101,15 +104,19 @@ Participants use that URL on their device to log in and fetch their code.
 ## Running multiple studies
 
 A single Pages deployment can serve every study. Nothing in `index.html` is study-specific —
-it resolves `?study=slug` against `studies.json` at load time and fails gracefully with a
-"Study not found" message if the slug is missing or unknown. To add a new study:
+it resolves `?base=value` against `studies.json` at load time and fails gracefully with a
+"Study not found" message if the value is missing or unknown. To add a new dedicated study:
 
 1. Create a **new Gmail account** for that study's master inbox, and a **new Apps Script
    project** under it (step 1 above, in full — its own Script Properties, its own deployment,
    its own `/exec` URL).
 2. Add one entry to `studies.json` with that URL and push. No frontend redeploy step beyond
    the git push — GitHub Pages picks it up automatically.
-3. Send participants the link with that study's slug: `.../?study=<slug>`.
+3. Send participants the link with that study's base value: `.../?base=<value>`.
+
+(To add a study that forwards mail into an existing hub deployment instead of getting its own
+Gmail/Apps Script project, see "Hub mode" below — the `studies.json` step is the same, just
+pointing at the hub's `/exec` URL instead of a new one.)
 
 Each study's **backend** stays fully isolated — separate Gmail inbox, separate REDCap
 project/token, separate Apps Script deployment, separate Script Properties, separate
@@ -137,24 +144,32 @@ Apps Script setup themselves at all.
 Script deployment (the "hub" — typically your existing dedicated deployment, or a fresh one)
 can additionally host any number of *forwarded* studies:
 
-1. The other researcher keeps their own Gmail exactly as-is. In their Gmail settings, they add
-   your hub's Gmail address as a **forwarding address** (Settings → Forwarding and POP/IMAP →
-   Add a forwarding address), which sends a one-time verification email to the hub inbox —
-   someone with hub access clicks the confirmation link once.
-2. They create a **filter** in their own Gmail matching their device-verification pattern
-   (e.g. `to:(theirprefix+*)`) with the action "Forward it to" your hub, targeting a **relay
-   alias** unique to their study — a plus-address on the hub's own account, e.g.
-   `yourhub+theirslug@gmail.com`. Nothing else about their inbox changes, and they can delete
-   the filter at any time to stop it — no token or account access to revoke on your end.
-3. On the hub, run `registerStudy_()` in `Code.gs` once (see the template function — fill in
-   their REDCap URL/token, their own Gmail address as `baseEmail`, and the relay alias you
-   agreed on, then run it from the Apps Script editor's function dropdown). This writes one
-   `STUDY_<SLUG>` Script Property containing that study's config as JSON.
-4. Add an entry to `studies.json` for their slug, pointing `appsScriptUrl` at the **hub's**
-   `/exec` URL (the same URL as any other study already hosted there).
-5. Give them the same `?study=<slug>` link as any other study. The frontend already sends the
-   slug on every request (used for routing on the hub), so nothing else changes for
-   participants.
+0. **One-time, per hub deployment (not per study):** run `setupHub_()` in `Code.gs` with this
+   hub's own Gmail username filled in (the part before `@gmail.com` — this assumes a gmail.com
+   hub address for now, same as the rest of this script's Gmail-specific logic either way).
+   Every study's relay alias is derived from this — you only set it once, no matter how many
+   studies the hub ends up serving.
+1. Pick a short `base` value for the new study (this is the same value that goes in
+   `studies.json` and the participant link). The relay alias they'll forward into is always
+   `<hub username>+<base>@gmail.com` — e.g. if the hub is `yourhub@gmail.com` and `base` is
+   `samma`, the address is `yourhub+samma@gmail.com`. One formula, no separate value to agree
+   on or get wrong.
+2. The other researcher keeps their own Gmail exactly as-is. In their Gmail settings, they add
+   that address as a **forwarding address** (Settings → Forwarding and POP/IMAP → Add a
+   forwarding address), which sends a one-time verification email to the hub inbox — someone
+   with hub access clicks the confirmation link once.
+3. They create a **filter** in their own Gmail matching their device-verification pattern
+   (e.g. `to:(theirprefix+*)`) with the action "Forward it to" that same address. Nothing else
+   about their inbox changes, and they can delete the filter at any time to stop it — no token
+   or account access to revoke on your end.
+4. On the hub, run `registerStudy_()` in `Code.gs` once with `base` set to the value from step
+   1, and their REDCap URL/token and own Gmail address (`baseEmail`) filled in. This writes one
+   `STUDY_<BASE>` Script Property containing that study's config as JSON, and logs the relay
+   alias to double-check against what you gave the researcher in step 2.
+5. Add an entry to `studies.json` keyed by that same `base` value, pointing `appsScriptUrl` at
+   the **hub's** `/exec` URL (the same URL as any other study already hosted there).
+6. Give them the link `.../?base=<value>`. The frontend already sends `base` on every request
+   (used for routing on the hub), so nothing else changes for participants.
 
 **How the hub tells participants apart.** The relay alias only narrows a search down to "mail
 for this study" — many participants share it. Gmail's *automatic* forwarding (via Settings or
@@ -169,12 +184,12 @@ check it via "Check system status," since exact header-preservation behavior isn
 Google documents in detail and could have edge cases.
 
 **Mixing modes.** A single deployment can serve its own dedicated study (flat Script
-Properties, unchanged) *and* any number of hub studies (`STUDY_<SLUG>` properties)
-simultaneously — `getConfig_()` picks the right one per-request based on the `study` slug sent
-by the frontend, falling back to the dedicated/flat config if no matching `STUDY_<SLUG>` exists.
+Properties, unchanged) *and* any number of hub studies (`STUDY_<BASE>` properties)
+simultaneously — `getConfig_()` picks the right one per-request based on the `base` value sent
+by the frontend, falling back to the dedicated/flat config if no matching `STUDY_<BASE>` exists.
 Existing dedicated deployments need no changes to keep working exactly as before.
 
-**Removing a hub study:** run `unregisterStudy_()` with the right slug, and remove its
+**Removing a hub study:** run `unregisterStudy_()` with the right `base` value, and remove its
 `studies.json` entry.
 
 ## Security notes (read before enrolling real participants)
