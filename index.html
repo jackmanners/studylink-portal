@@ -148,15 +148,54 @@
     margin: -8px 0 16px;
     min-height: 1em;
   }
-  .spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255,255,255,0.4);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
+  .loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 10px;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+  .loader span:nth-child(1) { animation: dot-breathe-0 1.7s ease-in-out infinite; }
+  .loader span:nth-child(2) { animation: dot-breathe-1 1.7s ease-in-out infinite; }
+  .loader span:nth-child(3) { animation: dot-breathe-2 1.7s ease-in-out infinite; }
+  .loader span:nth-child(4) { animation: dot-breathe-3 1.7s ease-in-out infinite; }
+  .loader span:nth-child(5) { animation: dot-breathe-4 1.7s ease-in-out infinite; }
+  /* Each dot grows on the way left→right, then the rightmost dot shrinks
+     first and the leftmost last, so the "lit" region visibly contracts
+     right→left — a breathing sweep rather than five dots pulsing in place. */
+  @keyframes dot-breathe-0 {
+    0% { transform: scale(0.4); opacity: 0.4; }
+    10%, 90% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-1 {
+    0%, 10% { transform: scale(0.4); opacity: 0.4; }
+    20%, 80% { transform: scale(1); opacity: 1; }
+    90%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-2 {
+    0%, 20% { transform: scale(0.4); opacity: 0.4; }
+    30%, 70% { transform: scale(1); opacity: 1; }
+    80%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-3 {
+    0%, 30% { transform: scale(0.4); opacity: 0.4; }
+    40%, 60% { transform: scale(1); opacity: 1; }
+    70%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-4 {
+    0%, 40% { transform: scale(0.4); opacity: 0.4; }
+    50% { transform: scale(1); opacity: 1; }
+    60%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
 
   .participant-badge {
     display: inline-block;
@@ -186,7 +225,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     margin-top: 18px;
-    transition: background 0.3s, border-color 0.3s;
+    transition: background 0.3s, border-color 0.3s, padding 0.3s;
   }
   .code-display.pulse {
     animation: pulseIn 0.5s ease;
@@ -202,6 +241,27 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.1em;
     color: var(--primary);
+    transition: font-size 0.3s, color 0.3s;
+  }
+  /* Only match found, but stale — de-emphasize instead of announcing it
+     like a fresh code, since it likely isn't what the participant needs. */
+  .code-display.stale {
+    padding: 16px 10px;
+    background: transparent;
+  }
+  .code-display.stale .code-value {
+    font-size: 1.5rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .code-age {
+    display: none;
+    margin-top: 6px;
+    font-size: 0.74rem;
+    color: var(--muted);
+  }
+  .code-display.stale .code-age {
+    display: block;
   }
   .code-subject {
     margin-top: 8px;
@@ -307,6 +367,7 @@
         <div class="code-display hidden" id="codeDisplay">
           <div class="code-value" id="codeValue"></div>
           <div class="code-subject" id="codeSubject"></div>
+          <div class="code-age" id="codeAge"></div>
         </div>
 
         <button type="button" class="history-toggle hidden" id="historyToggle"></button>
@@ -356,6 +417,7 @@
   const codeDisplay = document.getElementById('codeDisplay');
   const codeValue = document.getElementById('codeValue');
   const codeSubject = document.getElementById('codeSubject');
+  const codeAge = document.getElementById('codeAge');
   const historyToggle = document.getElementById('historyToggle');
   const codeHistory = document.getElementById('codeHistory');
   const logoutBtn = document.getElementById('logoutBtn');
@@ -391,6 +453,11 @@
     STUDY_NAME = study.name || 'StudyLink Portal';
     document.title = STUDY_NAME;
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
+
+    const prefillToken = new URLSearchParams(window.location.search).get('token');
+    if (prefillToken) {
+      document.getElementById('patientToken').value = prefillToken;
+    }
 
     statusCard.classList.add('hidden');
     flipContainer.classList.remove('hidden');
@@ -443,7 +510,7 @@
     loginBtn.disabled = isLoading;
     loginBtnText.textContent = isLoading ? '' : 'Continue';
     if (isLoading) {
-      loginBtn.innerHTML = '<span class="spinner"></span>';
+      loginBtn.innerHTML = '<span class="loader"><span></span><span></span><span></span><span></span><span></span></span>';
     } else {
       loginBtn.innerHTML = '<span id="loginBtnText">Continue</span>';
     }
@@ -472,6 +539,8 @@
     statusLine.textContent = '';
     codeDisplay.classList.add('hidden');
     codeDisplay.classList.remove('pulse');
+    codeDisplay.classList.remove('stale');
+    codeAge.textContent = '';
     historyToggle.classList.add('hidden');
     codeHistory.classList.add('hidden');
     codeHistory.innerHTML = '';
@@ -530,6 +599,12 @@
     statusLine.textContent = 'Code received.';
     codeValue.textContent = result.code;
     codeSubject.textContent = result.subject || '';
+
+    const ageMinutes = (Date.now() - new Date(result.receivedAt).getTime()) / 60000;
+    const stale = ageMinutes >= HISTORY_AUTO_EXPAND_MINUTES;
+    codeAge.textContent = stale ? 'Received ' + relativeTime(result.receivedAt) : '';
+    codeDisplay.classList.toggle('stale', stale);
+
     codeDisplay.classList.remove('hidden');
     codeDisplay.classList.add('pulse');
     renderHistory(result.messages || [], result.receivedAt);
