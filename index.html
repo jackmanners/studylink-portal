@@ -160,15 +160,17 @@
 
   .participant-badge {
     display: inline-block;
+    max-width: 100%;
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--primary-dark);
     font-weight: 600;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.01em;
     padding: 4px 12px;
     border-radius: 999px;
     font-size: 0.76rem;
     margin-bottom: 20px;
+    overflow-wrap: anywhere;
   }
   .status-line {
     text-align: center;
@@ -426,7 +428,7 @@
       const result = await callBackend('verify', { token: token });
       if (result.success) {
         currentToken = token;
-        showCodeScreen(result.recordId);
+        showCodeScreen(result.address);
       } else {
         loginError.textContent = result.error || 'Verification failed.';
       }
@@ -447,8 +449,8 @@
     }
   }
 
-  function showCodeScreen(recordId) {
-    participantBadge.textContent = recordId ? 'Participant ' + recordId : 'Signed in';
+  function showCodeScreen(address) {
+    participantBadge.textContent = address || 'Signed in';
     flipInner.classList.add('flipped');
     startPolling();
   }

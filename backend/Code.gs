@@ -134,9 +134,10 @@ function handleVerify(token) {
 
   clearFailedAttempts(token);
   const deviceEmail = String(record.device_email || '').trim();
+  const address = deviceEmail || buildAlias(record.record_id);
   startSession(token, record.record_id, deviceEmail);
 
-  return { success: true, recordId: record.record_id };
+  return { success: true, recordId: record.record_id, address: address };
 }
 
 // ── Action: fetchCode ──────────────────────────────────────────────────
@@ -257,7 +258,7 @@ function buildAlias(recordId) {
 
 function extractCode(text) {
   if (!text) return null;
-  const match = text.match(/\b\d{4,6}\b/);
+  const match = text.match(/\b\d{4,8}\b/);
   return match ? match[0] : null;
 }
 
