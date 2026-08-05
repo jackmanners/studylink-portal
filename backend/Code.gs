@@ -20,7 +20,7 @@
  * Every study this deployment serves — whether its Gmail account IS this
  * script's own account, or its mail is forwarded in from somewhere else
  * — is a single `STUDY_<BASE>` Script Property holding one JSON blob
- * (see registerStudy_() below). `base` is always the same value the
+ * (see registerStudy() below). `base` is always the same value the
  * frontend sends as `?base=` and the same value used as the Gmail
  * plus-addressing prefix for that study's participant aliases
  * (base+recordId@gmail.com) — assumed gmail.com for now.
@@ -83,7 +83,7 @@ function getConfig_(base) {
   const props = PropertiesService.getScriptProperties();
   const raw = props.getProperty('STUDY_' + base.toUpperCase());
   if (!raw) {
-    throw new Error('Unknown study "' + base + '". Has it been registered with registerStudy_()?');
+    throw new Error('Unknown study "' + base + '". Has it been registered with registerStudy()?');
   }
 
   let study;
@@ -133,7 +133,7 @@ function getConfig_(base) {
 // Only required if this deployment will host any forwarded study — not
 // needed for a deployment that only ever serves its own dedicated
 // study/studies. This script's own Gmail username (before @gmail.com).
-function setGmailUsername_() {
+function setGmailUsername() {
   PropertiesService.getScriptProperties().setProperty('GMAIL_USERNAME', 'yourhub');
 }
 
@@ -148,9 +148,9 @@ function setGmailUsername_() {
 // Gmail, who never shares account access): set `forwarded: true` and
 // `baseEmail` to their Gmail address; `base` can be any short routing
 // key you choose. Requires GMAIL_USERNAME to already be set
-// (setGmailUsername_()) — the relay alias they need to forward into is
+// (setGmailUsername()) — the relay alias they need to forward into is
 // logged after running this.
-function registerStudy_() {
+function registerStudy() {
   const base = 'BASE_HERE';
   PropertiesService.getScriptProperties().setProperty(
     'STUDY_' + base.toUpperCase(),
@@ -173,7 +173,7 @@ function registerStudy_() {
 }
 
 // Removes a study's registration. Run manually with the right base.
-function unregisterStudy_() {
+function unregisterStudy() {
   const base = 'BASE_HERE';
   PropertiesService.getScriptProperties().deleteProperty('STUDY_' + base.toUpperCase());
 }
@@ -184,7 +184,7 @@ function unregisterStudy_() {
 // remove any study on this deployment, including setting arbitrary
 // REDCap credentials. Pick something long and random, store it in a
 // password manager, never commit it anywhere.
-function setAdminToken_() {
+function setAdminToken() {
   PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN', 'CHOOSE_A_LONG_RANDOM_TOKEN');
 }
 
@@ -344,7 +344,7 @@ function checkRelay_(config) {
 
 // ── Admin actions (admin.html) ────────────────────────────────────────
 // Lets studies be registered/edited/removed from the browser instead of
-// the Apps Script editor. Gated by ADMIN_TOKEN (see setAdminToken_()) —
+// the Apps Script editor. Gated by ADMIN_TOKEN (see setAdminToken()) —
 // these responses never echo back REDCap credentials once stored, only
 // booleans/labels, so a stolen adminListStudies response can't leak them.
 
@@ -361,7 +361,7 @@ function checkAdminToken_(token) {
 
   const expected = PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN');
   if (!expected) {
-    return 'Admin token not configured on this deployment. Run setAdminToken_() first.';
+    return 'Admin token not configured on this deployment. Run setAdminToken() first.';
   }
   if (String(token || '') !== expected) {
     cache.put(attemptsKey, String(attempts + 1), ADMIN_LOCKOUT_WINDOW_SEC);

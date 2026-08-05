@@ -32,7 +32,7 @@ deployment rather than creating a new one. Script Properties persist across rede
 ## 2. Register a study
 
 Every study is one Script Property, `STUDY_<BASE>` (uppercased), holding a JSON blob — added by
-filling in and running `registerStudy_()` in `Code.gs` from the Apps Script editor's function
+filling in and running `registerStudy()` in `Code.gs` from the Apps Script editor's function
 dropdown. `base` is the value that ties everything together: it's what goes in `studies.json`,
 what participants' links carry as `?base=`, and (for the common case) the literal Gmail
 username whose plus-addresses (`base+recordId@gmail.com`) participants' devices send codes to.
@@ -44,7 +44,7 @@ script is running under `samma.study@gmail.com`, `base` is `"samma.study"`. Leav
 configure, since the account *is* `base@gmail.com` by definition.
 
 ```js
-function registerStudy_() {
+function registerStudy() {
   const base = 'samma.study';
   PropertiesService.getScriptProperties().setProperty(
     'STUDY_' + base.toUpperCase(),
@@ -58,7 +58,7 @@ function registerStudy_() {
 ```
 
 **Case B — a researcher's own Gmail, forwarded in without sharing account access.** See
-"Registering a forwarded study" below — same `registerStudy_()` function, `forwarded: true`,
+"Registering a forwarded study" below — same `registerStudy()` function, `forwarded: true`,
 plus one extra one-time setup step.
 
 In REDCap, confirm the study's project has:
@@ -77,13 +77,13 @@ resolves, REDCap is reachable with all configured field names actually existing 
 (depending on mode) either Gmail access or the relay alias works. Run it after every change
 instead of debugging through a participant-facing error.
 
-**Removing a study:** run `unregisterStudy_()` with the right `base`, and remove its
+**Removing a study:** run `unregisterStudy()` with the right `base`, and remove its
 `studies.json` entry.
 
 **Prefer not opening the Apps Script editor for this?** [admin.html](admin.html), hosted
 alongside the rest of this site, does the same registration/edit/removal from a form in the
 browser instead — see "Using the admin panel" below. It needs a one-time setup step
-(`setAdminToken_()`) before it'll do anything.
+(`setAdminToken()`) before it'll do anything.
 
 ## 3. Add the study to studies.json
 
@@ -142,7 +142,7 @@ forwarding, not account delegation or OAuth** — the researcher keeps their own
 as-is and never shares access; they just forward matching mail to an address on your deployment
 ("the hub"). Revoking access later is deleting one filter on their end — no token to manage.
 
-0. **One-time, per hub deployment (not per study):** run `setGmailUsername_()` in `Code.gs`
+0. **One-time, per hub deployment (not per study):** run `setGmailUsername()` in `Code.gs`
    with this deployment's own Gmail username filled in (the part before `@gmail.com`). Every
    forwarded study's relay alias is derived from this — set it once, no matter how many
    forwarded studies the hub ends up serving. Not needed if this deployment only ever hosts
@@ -158,10 +158,10 @@ as-is and never shares access; they just forward matching mail to an address on 
 3. They create a **filter** in their own Gmail matching their device-verification pattern (e.g.
    `to:(theirprefix+*)`) with the action "Forward it to" that same address. They can delete the
    filter at any time to stop it.
-4. On the hub, run `registerStudy_()` with `base` set to the value from step 1,
+4. On the hub, run `registerStudy()` with `base` set to the value from step 1,
    `forwarded: true`, and `baseEmail` set to the researcher's own Gmail address:
    ```js
-   function registerStudy_() {
+   function registerStudy() {
      const base = 'otherstudy';
      PropertiesService.getScriptProperties().setProperty(
        'STUDY_' + base.toUpperCase(),
@@ -200,7 +200,7 @@ If you set up a study before this Script Properties layout existed (flat `REDCAP
 1. Note its current `REDCAP_API_URL` and `REDCAP_API_TOKEN` values (Project Settings → Script
    Properties in the old deployment).
 2. Paste the current `backend/Code.gs` into that same Apps Script project, save.
-3. Run `registerStudy_()` with `base` set to that account's own Gmail username (the part before
+3. Run `registerStudy()` with `base` set to that account's own Gmail username (the part before
    `@gmail.com`) and the REDCap URL/token from step 1, `forwarded: false`.
 4. Delete the old flat `REDCAP_API_URL`, `REDCAP_API_TOKEN`, `BASE_EMAIL` (and any
    `ACCESS_TOKEN_FIELD`/`FORWARDING_STATUS_FIELD`/`DEVICE_EMAIL_FIELD` overrides) Script
@@ -214,22 +214,25 @@ If you set up a study before this Script Properties layout existed (flat `REDCAP
 
 ## Using the admin panel
 
-[admin.html](admin.html) does everything `registerStudy_()`/`unregisterStudy_()` do, from a
+[admin.html](admin.html) does everything `registerStudy()`/`unregisterStudy()` do, from a
 form in the browser instead of the Apps Script editor — register a new study, edit an existing
 one (REDCap URL/token fields can be left blank to keep their current values), remove a study,
 or just see what's registered on a deployment.
 
-**One-time setup, per deployment:** run `setAdminToken_()` in `Code.gs` with a long, random
-value filled in — pick something like a generated password, not a memorable phrase. Treat this
-token like a master password: anyone who has it can register, edit, or remove **any** study on
-that deployment, including setting arbitrary REDCap credentials, so store it in a password
-manager rather than, say, a chat message. Without this property set, every admin action is
-refused.
+**One-time setup, per deployment:** set a Script Property `ADMIN_TOKEN` with a long, random
+value — either via Project Settings → Script Properties → Add script property directly, or by
+running `setAdminToken()` in `Code.gs` with the value filled in. Pick something like a
+generated password, not a memorable phrase. Treat this token like a master password: anyone
+who has it can register, edit, or remove **any** study on that deployment, including setting
+arbitrary REDCap credentials, so store it in a password manager rather than, say, a chat
+message. Without this property set, every admin action is refused.
 
-**Using it:** open `admin.html` on your Pages site, paste in the deployment's `/exec` URL and
-the admin token, click **Load studies**. Both fields save to your own browser's local storage
-for convenience (never sent anywhere but the URL you provide) — you won't need to retype them
-next visit on the same device.
+**Using it:** open `admin.html` on your Pages site. The **Deployment** dropdown is populated
+from `studies.json` automatically, so picking an already-registered deployment is a click, not
+a paste — "Other / new deployment…" reveals a manual URL field for one that isn't listed yet.
+Enter the admin token, click **Load studies**. Both the last-used deployment and the token save
+to your own browser's local storage for convenience (never sent anywhere but the URL you pick)
+— you won't need to reselect/retype them next visit on the same device.
 
 `admin.html` is public, same as every other file in this repo — reachable by anyone who guesses
 or finds the URL. That's fine: every admin action requires the correct token, checked

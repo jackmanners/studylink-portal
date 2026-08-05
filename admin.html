@@ -62,9 +62,26 @@
     margin: 0 0 14px;
   }
   p.subtitle { margin: 0 0 20px; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+  .help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    cursor: help;
+    margin-left: 5px;
+    vertical-align: middle;
+  }
+  label .help-icon { margin-left: 4px; }
   label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 5px; margin-top: 14px; }
   label:first-of-type { margin-top: 0; }
-  input[type="text"], input[type="password"], input[type="url"] {
+  input[type="text"], input[type="password"], input[type="url"], select {
     width: 100%;
     padding: 10px 12px;
     font-size: 0.92rem;
@@ -75,7 +92,7 @@
     border-radius: 8px;
     outline: none;
   }
-  input:focus { border-color: var(--primary); }
+  input:focus, select:focus { border-color: var(--primary); }
   input::placeholder { color: #b3a892; }
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
   .checkbox-row input { width: auto; }
@@ -134,16 +151,11 @@
 
     <div class="card">
       <p class="eyebrow">StudyLink Portal</p>
-      <h1>Admin</h1>
-      <p class="subtitle">
-        Register, edit, or remove studies on a deployment without opening the Apps Script
-        editor. Requires that deployment's admin token (set once via <code>setAdminToken_()</code>
-        in <code>Code.gs</code>). This page is public, like the rest of the site — nothing here
-        works without the correct token, and it's never echoed back once stored.
-      </p>
+      <h1>Admin<span class="help-icon" title="Requires that deployment's admin token, set once via setAdminToken() in Code.gs. This page is public, but nothing works without the correct token, and it's never echoed back once stored.">?</span></h1>
 
-      <label for="deployUrl">Apps Script URL (the deployment's <code>/exec</code> URL)</label>
-      <input type="url" id="deployUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
+      <label for="deployUrlSelect">Deployment<span class="help-icon" title="Which Apps Script backend to administer, read from studies.json. Pick 'Other' for one not listed there yet.">?</span></label>
+      <select id="deployUrlSelect"></select>
+      <input type="url" id="deployUrl" class="hidden" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" style="margin-top:8px;" />
 
       <label for="adminToken">Admin token</label>
       <input type="password" id="adminToken" placeholder="Enter the admin token" autocomplete="off" />
@@ -161,18 +173,13 @@
 
     <div class="card hidden" id="formCard">
       <h2 id="formHeading">Register a study</h2>
-      <p class="subtitle" id="formSubtitle">
-        <code>base</code> is the value used in <code>studies.json</code> and participant
-        links (<code>?base=</code>). For a dedicated study, it must exactly match this
-        deployment's own Gmail username.
-      </p>
 
-      <label for="fBase">base</label>
+      <label for="fBase">base<span class="help-icon" title="Used in studies.json and participant links (?base=). For a dedicated study, must exactly match this deployment's own Gmail username.">?</span></label>
       <input type="text" id="fBase" placeholder="e.g. samma.study" autocomplete="off" />
 
       <div class="checkbox-row">
         <input type="checkbox" id="fForwarded" />
-        <label for="fForwarded">Forwarded (mail relayed in from another researcher's own Gmail)</label>
+        <label for="fForwarded">Forwarded<span class="help-icon" title="Mail relayed in from another researcher's own Gmail, rather than this deployment's own inbox.">?</span></label>
       </div>
 
       <div id="baseEmailGroup" class="hidden">
@@ -210,10 +217,12 @@
   </div>
 
 <script>
+  const deployUrlSelect = document.getElementById('deployUrlSelect');
   const deployUrlInput = document.getElementById('deployUrl');
   const adminTokenInput = document.getElementById('adminToken');
   const loadBtn = document.getElementById('loadBtn');
   const connectStatus = document.getElementById('connectStatus');
+  const MANUAL_OPTION = '__manual__';
 
   const studiesCard = document.getElementById('studiesCard');
   const studiesTableWrap = document.getElementById('studiesTableWrap');
@@ -237,18 +246,62 @@
 
   let editingBase = null; // non-null while editing an existing study
 
-  // Convenience only — stored in this browser's own localStorage, never
-  // sent anywhere but the Apps Script URL you provide.
-  deployUrlInput.value = localStorage.getItem('studylink_admin_url') || '';
+  // Admin token is convenience-only, stored in this browser's own
+  // localStorage, never sent anywhere but the Apps Script URL you pick.
   adminTokenInput.value = localStorage.getItem('studylink_admin_token') || '';
+  const savedUrl = localStorage.getItem('studylink_admin_url') || '';
+
+  // Populate the deployment dropdown from studies.json instead of making
+  // you paste/remember a raw Apps Script URL every time — only a brand
+  // new deployment not listed there yet needs manual entry.
+  (async function initDeployments() {
+    let studies = {};
+    try {
+      const response = await fetch('studies.json', { cache: 'no-store' });
+      studies = await response.json();
+    } catch (err) {
+      // No studies.json reachable — fall straight to manual entry.
+    }
+
+    const byUrl = {};
+    Object.keys(studies).forEach((base) => {
+      const url = studies[base] && studies[base].appsScriptUrl;
+      if (!url) return;
+      (byUrl[url] = byUrl[url] || []).push(studies[base].name || base);
+    });
+
+    const urls = Object.keys(byUrl);
+    deployUrlSelect.innerHTML = urls.map((url) =>
+      '<option value="' + escapeHtml(url) + '">' + escapeHtml(byUrl[url].join(', ')) + '</option>'
+    ).join('') + '<option value="' + MANUAL_OPTION + '">Other / new deployment…</option>';
+
+    if (urls.indexOf(savedUrl) !== -1) {
+      deployUrlSelect.value = savedUrl;
+    } else if (savedUrl) {
+      deployUrlSelect.value = MANUAL_OPTION;
+      deployUrlInput.value = savedUrl;
+      deployUrlInput.classList.remove('hidden');
+    } else if (urls.length === 0) {
+      deployUrlSelect.value = MANUAL_OPTION;
+      deployUrlInput.classList.remove('hidden');
+    }
+  })();
+
+  deployUrlSelect.addEventListener('change', () => {
+    deployUrlInput.classList.toggle('hidden', deployUrlSelect.value !== MANUAL_OPTION);
+  });
+
+  function currentDeployUrl() {
+    return (deployUrlSelect.value === MANUAL_OPTION ? deployUrlInput.value : deployUrlSelect.value).trim();
+  }
 
   fForwarded.addEventListener('change', () => {
     baseEmailGroup.classList.toggle('hidden', !fForwarded.checked);
   });
 
   async function callAdmin(action, extra) {
-    const url = deployUrlInput.value.trim();
-    if (!url) throw new Error('Enter the Apps Script URL first.');
+    const url = currentDeployUrl();
+    if (!url) throw new Error('Choose or enter the Apps Script URL first.');
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -264,7 +317,7 @@
     loadBtn.disabled = true;
     loadBtn.innerHTML = '<span class="spinner"></span>';
 
-    localStorage.setItem('studylink_admin_url', deployUrlInput.value.trim());
+    localStorage.setItem('studylink_admin_url', currentDeployUrl());
     localStorage.setItem('studylink_admin_token', adminTokenInput.value);
 
     try {
@@ -403,8 +456,7 @@
       formStatus.textContent = 'Saved.' + (result.relayAlias ? ' Relay alias: ' + result.relayAlias : '');
       formStatus.className = 'status-msg success';
 
-      const deployUrl = deployUrlInput.value.trim();
-      snippet.textContent = '"' + base + '": {\n  "name": "' + base + '",\n  "appsScriptUrl": "' + deployUrl + '"\n}';
+      snippet.textContent = '"' + base + '": {\n  "name": "' + base + '",\n  "appsScriptUrl": "' + currentDeployUrl() + '"\n}';
       snippetWrap.classList.remove('hidden');
 
       resetFormFields();
