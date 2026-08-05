@@ -44,6 +44,31 @@
     box-shadow: 0 8px 24px rgba(64, 48, 24, 0.08);
     padding: 34px 30px;
   }
+  .flip-container {
+    width: 100%;
+    max-width: 420px;
+    perspective: 1400px;
+  }
+  .flip-inner {
+    position: relative;
+    width: 100%;
+    display: grid;
+    transform-style: preserve-3d;
+    transition: transform 0.7s cubic-bezier(0.4, 0.15, 0.2, 1);
+  }
+  .flip-inner.flipped {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    grid-area: 1 / 1;
+    width: 100%;
+    align-self: start;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-face-back {
+    transform: rotateY(180deg);
+  }
   .eyebrow {
     font-family: var(--font-body);
     font-size: 0.72rem;
@@ -207,36 +232,43 @@
     <p class="subtitle" id="statusMessage">One moment.</p>
   </div>
 
-  <!-- Login screen -->
-  <div class="card hidden" id="loginCard">
-    <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
-    <h1>Sign in</h1>
-    <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
-    <form id="loginForm">
-      <label for="patientToken">Access Token</label>
-      <input type="text" id="patientToken" placeholder="Enter your token" required autocomplete="off" />
-      <div class="error-msg" id="loginError"></div>
-      <button type="submit" id="loginBtn">
-        <span id="loginBtnText">Continue</span>
-      </button>
-    </form>
-  </div>
+  <!-- Login / code retrieval, as a horizontal flip card -->
+  <div class="flip-container hidden" id="flipContainer">
+    <div class="flip-inner" id="flipInner">
 
-  <!-- Code retrieval screen -->
-  <div class="card hidden" id="codeCard">
-    <div class="participant-badge" id="participantBadge"></div>
-    <h1>Fetch your code</h1>
-    <p class="subtitle">Tap the button below once your device has sent a verification code.</p>
+      <!-- Login screen (front face) -->
+      <div class="card flip-face" id="loginCard">
+        <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
+        <h1>Sign in</h1>
+        <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
+        <form id="loginForm">
+          <label for="patientToken">Access Token</label>
+          <input type="text" id="patientToken" placeholder="Enter your token" required autocomplete="off" />
+          <div class="error-msg" id="loginError"></div>
+          <button type="submit" id="loginBtn">
+            <span id="loginBtnText">Continue</span>
+          </button>
+        </form>
+      </div>
 
-    <button id="fetchBtn">Fetch Device Code</button>
-    <div class="status-line" id="statusLine"></div>
+      <!-- Code retrieval screen (back face) -->
+      <div class="card flip-face flip-face-back" id="codeCard">
+        <div class="participant-badge" id="participantBadge"></div>
+        <h1 id="codeHeading">Looking for your code</h1>
+        <p class="subtitle">We're watching your device's inbox — this updates automatically.</p>
 
-    <div class="code-display hidden" id="codeDisplay">
-      <div class="code-value" id="codeValue"></div>
-      <div class="code-subject" id="codeSubject"></div>
+        <button id="fetchBtn">Waiting for code…</button>
+        <div class="status-line" id="statusLine"></div>
+
+        <div class="code-display hidden" id="codeDisplay">
+          <div class="code-value" id="codeValue"></div>
+          <div class="code-subject" id="codeSubject"></div>
+        </div>
+
+        <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
+      </div>
+
     </div>
-
-    <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
   </div>
 
 <script>
@@ -263,13 +295,14 @@
   const statusHeading = document.getElementById('statusHeading');
   const statusMessage = document.getElementById('statusMessage');
 
+  const flipContainer = document.getElementById('flipContainer');
+  const flipInner = document.getElementById('flipInner');
+
   const loginForm = document.getElementById('loginForm');
   const loginBtn = document.getElementById('loginBtn');
   const loginBtnText = document.getElementById('loginBtnText');
   const loginError = document.getElementById('loginError');
-  const loginCard = document.getElementById('loginCard');
 
-  const codeCard = document.getElementById('codeCard');
   const participantBadge = document.getElementById('participantBadge');
   const fetchBtn = document.getElementById('fetchBtn');
   const statusLine = document.getElementById('statusLine');
@@ -309,7 +342,7 @@
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
 
     statusCard.classList.add('hidden');
-    loginCard.classList.remove('hidden');
+    flipContainer.classList.remove('hidden');
   }
 
   function showStudyError(heading, message) {
@@ -367,17 +400,15 @@
 
   function showCodeScreen(recordId) {
     participantBadge.textContent = recordId ? 'Participant ' + recordId : 'Signed in';
-    loginCard.classList.add('hidden');
-    codeCard.classList.remove('hidden');
-    resetCodeScreen();
+    flipInner.classList.add('flipped');
+    startPolling();
   }
 
   logoutBtn.addEventListener('click', () => {
-    stopPolling();
+    resetCodeScreen();
     currentToken = null;
     document.getElementById('patientToken').value = '';
-    codeCard.classList.add('hidden');
-    loginCard.classList.remove('hidden');
+    flipInner.classList.remove('flipped');
   });
 
   // ── Code fetch + polling ─────────────────────────────────────────────
