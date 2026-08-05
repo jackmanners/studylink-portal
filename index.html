@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudyLink Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2ebdd;
+    --card-bg: #fffdf8;
+    --text: #332a1f;
+    --muted: #8c8071;
+    --primary: #2f5d52;
+    --primary-dark: #21453c;
+    --success: #4d7c5f;
+    --error: #b0503a;
+    --border: #e5dcc6;
+    --radius: 10px;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Public Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    font-family: var(--font-body);
+    color: var(--text);
+    padding: 20px;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(64, 48, 24, 0.08);
+    padding: 34px 30px;
+  }
+  .eyebrow {
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 1.65rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+  p.subtitle {
+    margin: 0 0 26px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  input[type="text"],
+  input[type="tel"],
+  input[type="number"] {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 1rem;
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    outline: none;
+    letter-spacing: 0.02em;
+    transition: border-color 0.15s;
+  }
+  input:focus {
+    border-color: var(--primary);
+  }
+  input::placeholder {
+    color: #b3a892;
+    letter-spacing: normal;
+  }
+  button {
+    width: 100%;
+    padding: 12px 16px;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fdfaf3;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  button:hover:not(:disabled) { background: var(--primary-dark); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .hidden { display: none !important; }
+  .error-msg {
+    color: var(--error);
+    font-size: 0.85rem;
+    margin: -8px 0 16px;
+    min-height: 1em;
+  }
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .participant-badge {
+    display: inline-block;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--primary-dark);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    margin-bottom: 20px;
+  }
+  .status-line {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-top: 14px;
+    min-height: 1.2em;
+  }
+  .code-display {
+    text-align: center;
+    padding: 26px 10px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    margin-top: 18px;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .code-display.pulse {
+    animation: pulseIn 0.5s ease;
+  }
+  @keyframes pulseIn {
+    0% { transform: scale(0.96); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .code-value {
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.1em;
+    color: var(--primary);
+  }
+  .code-subject {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    word-break: break-word;
+  }
+  .logout-link {
+    display: block;
+    text-align: center;
+    margin-top: 18px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: auto;
+    padding: 0;
+  }
+  .logout-link:hover { color: var(--text); background: none; }
+</style>
+</head>
+<body>
+
+  <!-- Login screen -->
+  <div class="card" id="loginCard">
+    <p class="eyebrow">StudyLink Portal</p>
+    <h1>Sign in</h1>
+    <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
+    <form id="loginForm">
+      <label for="patientToken">Access Token</label>
+      <input type="text" id="patientToken" placeholder="Enter your token" required autocomplete="off" />
+      <div class="error-msg" id="loginError"></div>
+      <button type="submit" id="loginBtn">
+        <span id="loginBtnText">Continue</span>
+      </button>
+    </form>
+  </div>
+
+  <!-- Code retrieval screen -->
+  <div class="card hidden" id="codeCard">
+    <div class="participant-badge" id="participantBadge"></div>
+    <h1>Fetch your code</h1>
+    <p class="subtitle">Tap the button below once your device has sent a verification code.</p>
+
+    <button id="fetchBtn">Fetch Device Code</button>
+    <div class="status-line" id="statusLine"></div>
+
+    <div class="code-display hidden" id="codeDisplay">
+      <div class="code-value" id="codeValue"></div>
+      <div class="code-subject" id="codeSubject"></div>
+    </div>
+
+    <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
+  </div>
+
+<script>
+  // ── Configuration ────────────────────────────────────────────────────
+  const APPS_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+  const POLL_INTERVAL_MS = 5000;
+  const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
+
+  // ── State ────────────────────────────────────────────────────────────
+  let currentToken = null;
+  let pollTimer = null;
+  let pollAttempts = 0;
+
+  const loginForm = document.getElementById('loginForm');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginBtnText = document.getElementById('loginBtnText');
+  const loginError = document.getElementById('loginError');
+  const loginCard = document.getElementById('loginCard');
+
+  const codeCard = document.getElementById('codeCard');
+  const participantBadge = document.getElementById('participantBadge');
+  const fetchBtn = document.getElementById('fetchBtn');
+  const statusLine = document.getElementById('statusLine');
+  const codeDisplay = document.getElementById('codeDisplay');
+  const codeValue = document.getElementById('codeValue');
+  const codeSubject = document.getElementById('codeSubject');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  // Sending as text/plain avoids a CORS preflight against the Apps Script
+  // endpoint (which cannot answer OPTIONS). The body is still JSON.
+  async function callBackend(action, extra) {
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action }, extra))
+    });
+    if (!response.ok) {
+      throw new Error('Network error (' + response.status + ')');
+    }
+    return response.json();
+  }
+
+  // ── Login ────────────────────────────────────────────────────────────
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = document.getElementById('patientToken').value.trim();
+    if (!token) return;
+
+    loginError.textContent = '';
+    setLoginLoading(true);
+
+    try {
+      const result = await callBackend('verify', { token: token });
+      if (result.success) {
+        currentToken = token;
+        showCodeScreen(result.recordId);
+      } else {
+        loginError.textContent = result.error || 'Verification failed.';
+      }
+    } catch (err) {
+      loginError.textContent = 'Could not reach the server. Please try again.';
+    } finally {
+      setLoginLoading(false);
+    }
+  });
+
+  function setLoginLoading(isLoading) {
+    loginBtn.disabled = isLoading;
+    loginBtnText.textContent = isLoading ? '' : 'Continue';
+    if (isLoading) {
+      loginBtn.innerHTML = '<span class="spinner"></span>';
+    } else {
+      loginBtn.innerHTML = '<span id="loginBtnText">Continue</span>';
+    }
+  }
+
+  function showCodeScreen(recordId) {
+    participantBadge.textContent = recordId ? 'Participant ' + recordId : 'Signed in';
+    loginCard.classList.add('hidden');
+    codeCard.classList.remove('hidden');
+    resetCodeScreen();
+  }
+
+  logoutBtn.addEventListener('click', () => {
+    stopPolling();
+    currentToken = null;
+    document.getElementById('patientToken').value = '';
+    codeCard.classList.add('hidden');
+    loginCard.classList.remove('hidden');
+  });
+
+  // ── Code fetch + polling ─────────────────────────────────────────────
+  fetchBtn.addEventListener('click', startPolling);
+
+  function resetCodeScreen() {
+    stopPolling();
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Fetch Device Code';
+    statusLine.textContent = '';
+    codeDisplay.classList.add('hidden');
+    codeDisplay.classList.remove('pulse');
+  }
+
+  function startPolling() {
+    pollAttempts = 0;
+    fetchBtn.disabled = true;
+    codeDisplay.classList.add('hidden');
+    fetchBtn.textContent = 'Waiting for code...';
+    pollOnce();
+    pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  async function pollOnce() {
+    pollAttempts++;
+    const secondsLeft = Math.max(0, (MAX_POLL_ATTEMPTS - pollAttempts) * (POLL_INTERVAL_MS / 1000));
+    statusLine.textContent = 'Checking for code... (' + secondsLeft + 's remaining)';
+
+    try {
+      const result = await callBackend('fetchCode', { token: currentToken });
+      if (result.found && result.code) {
+        stopPolling();
+        showCode(result);
+        return;
+      }
+      if (result.error) {
+        stopPolling();
+        statusLine.textContent = result.error;
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Fetch Device Code';
+        return;
+      }
+    } catch (err) {
+      // Transient network errors are ignored; polling continues until timeout.
+    }
+
+    if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+      stopPolling();
+      statusLine.textContent = 'No code received within 2 minutes. Please try again.';
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = 'Fetch Device Code';
+    }
+  }
+
+  function showCode(result) {
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Fetch Device Code';
+    statusLine.textContent = 'Code received.';
+    codeValue.textContent = result.code;
+    codeSubject.textContent = result.subject || '';
+    codeDisplay.classList.remove('hidden');
+    codeDisplay.classList.add('pulse');
+  }
+</script>
+</body>
+</html>
