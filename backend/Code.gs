@@ -14,19 +14,57 @@
  * Participants authenticate with a single access token (REDCap field
  * `patient_token`) — there is no separate Participant ID input. The token
  * is looked up in REDCap via filterLogic to find the matching record.
+ *
+ * Secrets (REDCAP_API_URL, REDCAP_API_TOKEN, BASE_EMAIL) are NOT stored in
+ * this file. They live in Script Properties, which are per-project, not
+ * part of the source, and never committed to git. Set them once via
+ * Project Settings → Script Properties in the Apps Script editor, or by
+ * running setup_() below with your own values filled in. See README.md.
  */
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-const REDCAP_API_URL = 'https://your-redcap-instance.org/api/';
-const REDCAP_API_TOKEN = 'YOUR_REDCAP_API_TOKEN';
+// Required Script Properties — no defaults, deployment fails loudly if unset.
+const REQUIRED_PROPERTIES = ['REDCAP_API_URL', 'REDCAP_API_TOKEN', 'BASE_EMAIL'];
 
-// The master inbox's own address, e.g. 'study@gmail.com'.
-// Device aliases are derived as local+recordId@domain (Gmail "+" aliasing).
-const BASE_EMAIL = 'study@gmail.com';
+// Optional Script Properties — fall back to these if unset. Override only
+// if a given study's REDCap project names the token field differently.
+const OPTIONAL_PROPERTY_DEFAULTS = {
+  ACCESS_TOKEN_FIELD: 'patient_token'
+};
 
-// REDCap field holding each participant's access token.
-const ACCESS_TOKEN_FIELD = 'patient_token';
+function getConfig_() {
+  const props = PropertiesService.getScriptProperties();
+  const config = {};
+
+  REQUIRED_PROPERTIES.forEach((key) => { config[key] = props.getProperty(key); });
+  const missing = REQUIRED_PROPERTIES.filter((key) => !config[key]);
+  if (missing.length > 0) {
+    throw new Error('Missing Script Properties: ' + missing.join(', ') + '. See README.md.');
+  }
+
+  Object.keys(OPTIONAL_PROPERTY_DEFAULTS).forEach((key) => {
+    config[key] = props.getProperty(key) || OPTIONAL_PROPERTY_DEFAULTS[key];
+  });
+
+  return config;
+}
+
+// One-time setup helper — run manually from the Apps Script editor
+// (select this function, click Run) instead of using the Project
+// Settings UI, if you prefer. Fill in real values first, run once per
+// study/deployment, then it's safe to leave these lines in place (they
+// only ever write to this specific project's Script Properties, never to
+// git — each study gets its own Apps Script project and its own copy of
+// this file, so there's nothing to leak between studies).
+function setup_() {
+  PropertiesService.getScriptProperties().setProperties({
+    REDCAP_API_URL: 'https://your-redcap-instance.org/api/',
+    REDCAP_API_TOKEN: 'YOUR_REDCAP_API_TOKEN',
+    BASE_EMAIL: 'study@gmail.com'
+    // ACCESS_TOKEN_FIELD: 'patient_token', // optional — uncomment to override
+  });
+}
 
 // Failed-verify lockout: max attempts per token within LOCKOUT_WINDOW_SEC.
 const MAX_VERIFY_ATTEMPTS = 5;
@@ -137,18 +175,20 @@ function handleFetchCode(token) {
 // ── REDCap lookup ─────────────────────────────────────────────────────────
 
 function findRecordByToken(token) {
+  const config = getConfig_();
+
   const payload = {
-    token: REDCAP_API_TOKEN,
+    token: config.REDCAP_API_TOKEN,
     content: 'record',
     format: 'json',
     type: 'flat',
-    filterLogic: '[' + ACCESS_TOKEN_FIELD + ']=\'' + token.replace(/'/g, "\\'") + '\'',
+    filterLogic: '[' + config.ACCESS_TOKEN_FIELD + ']=\'' + token.replace(/'/g, "\\'") + '\'',
     'fields[0]': 'record_id',
     'fields[1]': 'forwarding_status',
     returnFormat: 'json'
   };
 
-  const response = UrlFetchApp.fetch(REDCAP_API_URL, {
+  const response = UrlFetchApp.fetch(config.REDCAP_API_URL, {
     method: 'post',
     payload: payload,
     muteHttpExceptions: true
@@ -174,9 +214,10 @@ function findRecordByToken(token) {
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function buildAlias(recordId) {
-  const at = BASE_EMAIL.indexOf('@');
-  const local = BASE_EMAIL.substring(0, at);
-  const domain = BASE_EMAIL.substring(at + 1);
+  const baseEmail = getConfig_().BASE_EMAIL;
+  const at = baseEmail.indexOf('@');
+  const local = baseEmail.substring(0, at);
+  const domain = baseEmail.substring(at + 1);
   return local + '+' + recordId + '@' + domain;
 }
 

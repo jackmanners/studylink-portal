@@ -201,7 +201,7 @@
 
   <!-- Login screen -->
   <div class="card" id="loginCard">
-    <p class="eyebrow">StudyLink Portal</p>
+    <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
     <h1>Sign in</h1>
     <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
     <form id="loginForm">
@@ -233,7 +233,13 @@
 
 <script>
   // ── Configuration ────────────────────────────────────────────────────
+  // Redeploying for a different study? These two lines are the only
+  // required edits — everything else in this file is study-agnostic.
   const APPS_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+  const STUDY_NAME = 'StudyLink Portal';
+
+  document.title = STUDY_NAME;
+  document.getElementById('studyEyebrow').textContent = STUDY_NAME;
 
   const POLL_INTERVAL_MS = 5000;
   const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
