@@ -5,88 +5,100 @@ authentication codes sent to device-specific Gmail aliases
 (`study+001@gmail.com`, `study+002@gmail.com`, ...).
 
 - **Frontend** ([index.html](index.html)): static single-page app, hosted free on GitHub Pages.
-- **Backend** ([backend/Code.gs](backend/Code.gs)): Google Apps Script Web App. Talks to a Gmail
-  inbox and the REDCap API. Holds the REDCap token — never exposed to the browser. Supports two
-  modes: a study's own dedicated inbox (default), or a shared **hub** that other researchers
-  forward their mail into without handing over account access — see "Hub mode" below.
+- **Backend** ([backend/Code.gs](backend/Code.gs)): Google Apps Script Web App. Talks to REDCap and
+  a Gmail inbox. Holds REDCap credentials — never exposed to the browser, never in `studies.json`,
+  never in git.
+
+Every study — whether its own Gmail account runs this script directly, or its mail is forwarded
+in from a researcher who never shares account access — is registered the same way: one
+`STUDY_<BASE>` entry in the backend's Script Properties. There's a single mechanism, not two
+separate ones; see "Registering a study" below.
 
 ## 1. Deploy the Apps Script backend
 
-1. Go to [script.google.com](https://script.google.com) and create a new project, using the
-   Gmail account that will act as the master inbox (the one receiving `+alias` mail).
+1. Go to [script.google.com](https://script.google.com) and create a new project. Which Gmail
+   account you're logged into matters (see step 3) — for a study whose Gmail you already
+   control, use that account; otherwise any account you control works (it becomes the "hub").
 2. Delete the default `Code.gs` contents and paste in [backend/Code.gs](backend/Code.gs).
-3. Set your secrets as **Script Properties** — these live in the Apps Script project itself,
-   not in the source file, so they're never in git. In the editor: gear icon (**Project
-   Settings**) → **Script Properties** → **Add script property**, and add three rows:
-   | Property | Value |
-   |---|---|
-   | `REDCAP_API_URL` | your REDCap instance's API endpoint |
-   | `REDCAP_API_TOKEN` | an API token scoped to read `record_id`, `forwarding_status`, `patient_token` |
-   | `BASE_EMAIL` | the master inbox address, e.g. `study@gmail.com` |
+3. Click **Deploy → New deployment** → Type: **Web app** → Execute as: **Me** → Who has
+   access: **Anyone** → **Deploy**. Authorize the requested scopes (Gmail read/modify, external
+   requests) — this is your own account, so this is expected.
+4. Copy the deployment's **Web app URL** (ends in `/exec`). You'll need it below.
 
-   (Alternative: fill in real values inside the `setup_()` function in `Code.gs`, select it
-   from the function dropdown, click **Run** once — it writes the same three properties. Just
-   don't leave real values sitting in `setup_()` if you're going to push this file anywhere;
-   revert them to placeholders after running, or edit only your local/deployed copy.)
-4. In REDCap, confirm each participant record has:
-   - A token field (default name `patient_token`) — a unique access token issued to that
-     participant. This is their only credential, so make it a real random string (e.g. 12+
-     characters), not something guessable. If your REDCap project names this field something
-     else, add an `ACCESS_TOKEN_FIELD` Script Property set to that field's name — otherwise
-     leave it unset and the default is used.
-   - A forwarding-status field (default name `forwarding_status`, override via a
-     `FORWARDING_STATUS_FIELD` Script Property) — set to `1` once a participant's device
-     alias is active. Login is rejected while this isn't `1`.
-   - A device email field (default name `device_email`, override via a `DEVICE_EMAIL_FIELD`
-     Script Property) — must exist in the project even if it's usually left blank. When a
-     record has a value here, the backend searches that exact address for the code instead of
-     deriving `BASE_EMAIL`'s `+recordId` alias — for participants whose device forwards to a
-     full address of its own rather than a shared inbox alias.
-5. Click **Deploy → New deployment**.
-   - Type: **Web app**.
-   - Execute as: **Me**.
-   - Who has access: **Anyone**.
-6. Authorize the requested scopes (Gmail read/modify, external requests) — this is your own
-   account, so this is expected.
-7. Copy the deployment's **Web app URL** (ends in `/exec`). You'll need it in step 2.
+You can redeploy (Deploy → Manage deployments → pencil icon → New version) any time you change
+the script; the `/exec` URL stays the same across versions as long as you edit the existing
+deployment rather than creating a new one. Script Properties persist across redeployments.
 
-You can redeploy (Deploy → Manage deployments → Edit → New version) any time you change the
-script; the `/exec` URL stays the same across versions as long as you edit the existing
-deployment rather than creating a new one. Script Properties persist across redeployments —
-you only need to set them once.
+## 2. Register a study
 
-**Checking a deployment is set up correctly:** the frontend's "Check system status" link (on
-the sign-in screen) calls a `healthCheck` action that needs no token — it confirms Script
-Properties are set, that REDCap is reachable and all four configured field names actually
-exist there, and that the script can read Gmail. Use it after every new deployment instead of
-debugging through a participant-facing error.
+Every study is one Script Property, `STUDY_<BASE>` (uppercased), holding a JSON blob — added by
+filling in and running `registerStudy_()` in `Code.gs` from the Apps Script editor's function
+dropdown. `base` is the value that ties everything together: it's what goes in `studies.json`,
+what participants' links carry as `?base=`, and (for the common case) the literal Gmail
+username whose plus-addresses (`base+recordId@gmail.com`) participants' devices send codes to.
 
-## 2. Register the study in studies.json
+**Case A — this script's own Gmail account is the study's inbox** (the common case; this is
+how SAMMA works). Set `base` to exactly match this account's own Gmail username — e.g. if this
+script is running under `samma.study@gmail.com`, `base` is `"samma.study"`. Leave
+`forwarded: false` and omit `baseEmail` entirely; there's nothing else Gmail-related to
+configure, since the account *is* `base@gmail.com` by definition.
 
-One frontend deployment can serve any number of studies. Which study a visitor lands on is
-picked by a `?base=value` query parameter, resolved at page load against
-[studies.json](studies.json) — a plain public map of base → Apps Script URL + display name.
-This same `base` value is also what a hub deployment uses to key a study's config and derive
-its relay alias (see "Hub mode" below), so it's worth picking something short and meaningful
-rather than an arbitrary code:
+```js
+function registerStudy_() {
+  const base = 'samma.study';
+  PropertiesService.getScriptProperties().setProperty(
+    'STUDY_' + base.toUpperCase(),
+    JSON.stringify({
+      redcapApiUrl: 'https://researchsurvey.flinders.edu.au/api/',
+      redcapApiToken: 'YOUR_REDCAP_API_TOKEN',
+      forwarded: false
+    })
+  );
+}
+```
+
+**Case B — a researcher's own Gmail, forwarded in without sharing account access.** See
+"Registering a forwarded study" below — same `registerStudy_()` function, `forwarded: true`,
+plus one extra one-time setup step.
+
+In REDCap, confirm the study's project has:
+- A token field (default name `patient_token`, override via `accessTokenField` in the JSON
+  above) — a unique access token issued to each participant. This is their only credential, so
+  make it a real random string (12+ characters), not something guessable.
+- A forwarding-status field (default `forwarding_status`, override via `forwardingStatusField`)
+  — set to `1` once a participant's device alias is active. Login is rejected while it isn't.
+- A device email field (default `device_email`, override via `deviceEmailField`) — must exist
+  even if usually left blank. When a record has a value here, the backend searches that exact
+  address instead of deriving the `base+recordId@gmail.com` alias.
+
+**Checking a study is set up correctly:** the frontend's "Check system status" link (on the
+sign-in screen) calls a `healthCheck` action — no token needed — confirming the study's config
+resolves, REDCap is reachable with all configured field names actually existing there, and
+(depending on mode) either Gmail access or the relay alias works. Run it after every change
+instead of debugging through a participant-facing error.
+
+**Removing a study:** run `unregisterStudy_()` with the right `base`, and remove its
+`studies.json` entry.
+
+## 3. Add the study to studies.json
+
+[studies.json](studies.json) is a plain public map of `base` → Apps Script URL + display name —
+and *only* that. It is never a place for REDCap credentials or anything else secret; those live
+exclusively in the backend's Script Properties, set in step 2, never committed to git:
 
 ```json
 {
-  "samma": {
+  "samma.study": {
     "name": "SAMMA Study",
     "appsScriptUrl": "https://script.google.com/macros/s/.../exec"
   }
 }
 ```
 
-Add an entry for your study (pick any URL-safe value), using the `/exec` URL from step 1. Give
-each participant the link `https://<you>.github.io/studylink-portal/?base=<value>` — nothing
-else in the frontend needs to change per study.
+Add an entry keyed by the exact `base` value you registered, pointing at the `/exec` URL from
+step 1. Give participants the link `https://<you>.github.io/studylink-portal/?base=<base>`.
 
-`studies.json` is public, same as the rest of this repo — see "Running multiple studies" below
-for the tradeoff that implies.
-
-## 3. Host the frontend on GitHub Pages
+## 4. Host the frontend on GitHub Pages
 
 1. Push this repo to GitHub (public or private — Pages works on both, private repos need
    GitHub Pro/Team/Enterprise for Pages, so public is the free option).
@@ -99,98 +111,101 @@ for the tradeoff that implies.
 4. Branch: `main`, folder: `/ (root)`. Save.
 5. GitHub will publish at `https://<you>.github.io/studylink-portal/` within a minute or two.
 
-Participants use that URL on their device to log in and fetch their code.
-
 ## Running multiple studies
 
-A single Pages deployment can serve every study. Nothing in `index.html` is study-specific —
-it resolves `?base=value` against `studies.json` at load time and fails gracefully with a
-"Study not found" message if the value is missing or unknown. To add a new dedicated study:
+A single Pages deployment + single Apps Script deployment can serve any number of studies —
+nothing in `index.html` is study-specific, and one Apps Script project can hold any number of
+`STUDY_<BASE>` registrations, mixing Case A and Case B freely. To add another:
 
-1. Create a **new Gmail account** for that study's master inbox, and a **new Apps Script
-   project** under it (step 1 above, in full — its own Script Properties, its own deployment,
-   its own `/exec` URL).
-2. Add one entry to `studies.json` with that URL and push. No frontend redeploy step beyond
-   the git push — GitHub Pages picks it up automatically.
-3. Send participants the link with that study's base value: `.../?base=<value>`.
+1. Register it (step 2) — a new `STUDY_<BASE>` property on either an existing deployment or a
+   fresh one.
+2. Add its entry to `studies.json` (step 3) and push.
+3. Send participants `.../?base=<base>`.
 
-(To add a study that forwards mail into an existing hub deployment instead of getting its own
-Gmail/Apps Script project, see "Hub mode" below — the `studies.json` step is the same, just
-pointing at the hub's `/exec` URL instead of a new one.)
+`studies.json` being one shared, public file means a mistake in it (wrong URL) can affect any
+study listed there, and anyone who finds this repo can see the full list of studies it's
+serving (URLs and names only — never credentials). If your institution's review process wants
+studies fully compartmentalized instead — separate repos, separate Pages sites, no shared
+registry — fork this repo per study and hardcode `APPS_SCRIPT_URL`/`STUDY_NAME` directly in
+`index.html` instead of using `studies.json`.
 
-Each study's **backend** stays fully isolated — separate Gmail inbox, separate REDCap
-project/token, separate Apps Script deployment, separate Script Properties, separate
-per-token lockout and session cache (Apps Script's `CacheService` is scoped per-project, so
-studies can't collide there either).
+## Registering a forwarded study (Case B): hosting a study whose Gmail you don't control
 
-The one thing that *is* shared is `studies.json` itself: it's a single public file listing
-every active study's Apps Script URL and name side by side. That's a low-severity exposure —
-the URLs aren't secrets, and `patient_token` still gates each study independently — but it does
-mean anyone who finds this repo can see the full list of studies it's currently serving, and a
-mistake in one study's `Code.gs`/REDCap setup doesn't affect others, but a mistake in
-`studies.json` (wrong URL) does. If your institution's review process wants studies fully
-compartmentalized instead — separate repos, separate Pages sites, no shared registry — fork
-this repo per study and hardcode `APPS_SCRIPT_URL`/`STUDY_NAME` directly in `index.html`
-instead of using `studies.json`.
+Sometimes you can't (or a colleague running their own study doesn't want to) create an Apps
+Script project inside that study's own Gmail account. **This is solved with Gmail's own mail
+forwarding, not account delegation or OAuth** — the researcher keeps their own Gmail exactly
+as-is and never shares access; they just forward matching mail to an address on your deployment
+("the hub"). Revoking access later is deleting one filter on their end — no token to manage.
 
-## Hub mode: hosting a study whose Gmail you don't control
-
-Everything above assumes you (or someone on your team) can create an Apps Script project
-*inside* the study's own Gmail account. That's not always true — a colleague running their own
-study may want to use this system without handing over account access, or without doing any
-Apps Script setup themselves at all.
-
-**Hub mode solves this with Gmail's own mail forwarding, not account delegation.** One Apps
-Script deployment (the "hub" — typically your existing dedicated deployment, or a fresh one)
-can additionally host any number of *forwarded* studies:
-
-0. **One-time, per hub deployment (not per study):** run `setupHub_()` in `Code.gs` with this
-   hub's own Gmail username filled in (the part before `@gmail.com` — this assumes a gmail.com
-   hub address for now, same as the rest of this script's Gmail-specific logic either way).
-   Every study's relay alias is derived from this — you only set it once, no matter how many
-   studies the hub ends up serving.
-1. Pick a short `base` value for the new study (this is the same value that goes in
-   `studies.json` and the participant link). The relay alias they'll forward into is always
+0. **One-time, per hub deployment (not per study):** run `setGmailUsername_()` in `Code.gs`
+   with this deployment's own Gmail username filled in (the part before `@gmail.com`). Every
+   forwarded study's relay alias is derived from this — set it once, no matter how many
+   forwarded studies the hub ends up serving. Not needed if this deployment only ever hosts
+   Case A studies.
+1. Pick a short `base` for the new study (this is the same value that goes in `studies.json`
+   and the participant link). The relay alias they'll forward into is always
    `<hub username>+<base>@gmail.com` — e.g. if the hub is `yourhub@gmail.com` and `base` is
-   `samma`, the address is `yourhub+samma@gmail.com`. One formula, no separate value to agree
-   on or get wrong.
-2. The other researcher keeps their own Gmail exactly as-is. In their Gmail settings, they add
-   that address as a **forwarding address** (Settings → Forwarding and POP/IMAP → Add a
-   forwarding address), which sends a one-time verification email to the hub inbox — someone
-   with hub access clicks the confirmation link once.
-3. They create a **filter** in their own Gmail matching their device-verification pattern
-   (e.g. `to:(theirprefix+*)`) with the action "Forward it to" that same address. Nothing else
-   about their inbox changes, and they can delete the filter at any time to stop it — no token
-   or account access to revoke on your end.
-4. On the hub, run `registerStudy_()` in `Code.gs` once with `base` set to the value from step
-   1, and their REDCap URL/token and own Gmail address (`baseEmail`) filled in. This writes one
-   `STUDY_<BASE>` Script Property containing that study's config as JSON, and logs the relay
-   alias to double-check against what you gave the researcher in step 2.
-5. Add an entry to `studies.json` keyed by that same `base` value, pointing `appsScriptUrl` at
-   the **hub's** `/exec` URL (the same URL as any other study already hosted there).
-6. Give them the link `.../?base=<value>`. The frontend already sends `base` on every request
-   (used for routing on the hub), so nothing else changes for participants.
+   `otherstudy`, the address is `yourhub+otherstudy@gmail.com`. One formula, no separate value
+   to agree on or get wrong.
+2. The researcher adds that address as a **forwarding address** in their own Gmail (Settings →
+   Forwarding and POP/IMAP → Add a forwarding address), confirming a one-time verification
+   email sent to the hub.
+3. They create a **filter** in their own Gmail matching their device-verification pattern (e.g.
+   `to:(theirprefix+*)`) with the action "Forward it to" that same address. They can delete the
+   filter at any time to stop it.
+4. On the hub, run `registerStudy_()` with `base` set to the value from step 1,
+   `forwarded: true`, and `baseEmail` set to the researcher's own Gmail address:
+   ```js
+   function registerStudy_() {
+     const base = 'otherstudy';
+     PropertiesService.getScriptProperties().setProperty(
+       'STUDY_' + base.toUpperCase(),
+       JSON.stringify({
+         redcapApiUrl: 'https://their-redcap-instance.org/api/',
+         redcapApiToken: 'THEIR_REDCAP_API_TOKEN',
+         forwarded: true,
+         baseEmail: 'their-study-inbox@gmail.com'
+       })
+     );
+   }
+   ```
+   This logs the relay alias to the console — double-check it matches what you gave the
+   researcher in step 2.
+5. Add its `studies.json` entry (step 3 above), pointing `appsScriptUrl` at the **hub's**
+   `/exec` URL — the same URL as any other study already hosted there.
+6. Give them the link `.../?base=<base>`.
 
 **How the hub tells participants apart.** The relay alias only narrows a search down to "mail
-for this study" — many participants share it. Gmail's *automatic* forwarding (via Settings or
-a Filter's "Forward it to" action) is a true SMTP relay: it preserves the original message's
+for this study" — many participants share it. Gmail's *automatic* forwarding (via Settings or a
+Filter's "Forward it to" action) is a true SMTP relay: it preserves the original message's
 `To:` header rather than rewriting it, unlike a human manually clicking "Forward" in the Gmail
-UI (which wraps everything in a new message and loses the original headers). The hub reads that
-preserved header to work out which participant's original alias (`theirprefix+recordId@theirgmail.com`,
-computed from the `baseEmail` in that study's config, exactly as in dedicated mode) a forwarded
-message actually belongs to. **Worth confirming this empirically with a real test send** before
-relying on it for a study — send a test verification email through the researcher's filter and
-check it via "Check system status," since exact header-preservation behavior isn't something
-Google documents in detail and could have edge cases.
+UI (which wraps everything in a new message and loses the original headers). The backend reads
+that preserved header to work out which participant's original alias
+(`theirprefix+recordId@theirgmail.com`, computed from `baseEmail`) a forwarded message actually
+belongs to. **Worth confirming this empirically with a real test send** before relying on it —
+send a test verification email through the researcher's filter and check it via "Check system
+status," since exact header-preservation behavior isn't something Google documents in detail
+and could have edge cases.
 
-**Mixing modes.** A single deployment can serve its own dedicated study (flat Script
-Properties, unchanged) *and* any number of hub studies (`STUDY_<BASE>` properties)
-simultaneously — `getConfig_()` picks the right one per-request based on the `base` value sent
-by the frontend, falling back to the dedicated/flat config if no matching `STUDY_<BASE>` exists.
-Existing dedicated deployments need no changes to keep working exactly as before.
+## Migrating an existing dedicated deployment to this scheme
 
-**Removing a hub study:** run `unregisterStudy_()` with the right `base` value, and remove its
-`studies.json` entry.
+If you set up a study before this Script Properties layout existed (flat `REDCAP_API_URL` /
+`REDCAP_API_TOKEN` / `BASE_EMAIL` properties, no `base` concept), migrate it:
+
+1. Note its current `REDCAP_API_URL` and `REDCAP_API_TOKEN` values (Project Settings → Script
+   Properties in the old deployment).
+2. Paste the current `backend/Code.gs` into that same Apps Script project, save.
+3. Run `registerStudy_()` with `base` set to that account's own Gmail username (the part before
+   `@gmail.com`) and the REDCap URL/token from step 1, `forwarded: false`.
+4. Delete the old flat `REDCAP_API_URL`, `REDCAP_API_TOKEN`, `BASE_EMAIL` (and any
+   `ACCESS_TOKEN_FIELD`/`FORWARDING_STATUS_FIELD`/`DEVICE_EMAIL_FIELD` overrides) Script
+   Properties — no longer read by the new code, safe to remove. Leaving them is also harmless;
+   they're just unused.
+5. Deploy → Manage deployments → pencil icon → New version → Deploy (same `/exec` URL).
+6. Update that study's `studies.json` entry's key to the new `base` value if it differs from
+   the old one, and update participant links to match (`?base=<new base>` instead of whatever
+   arbitrary slug was used before).
+7. Confirm via "Check system status" before telling participants.
 
 ## Security notes (read before enrolling real participants)
 
@@ -203,10 +218,12 @@ Existing dedicated deployments need no changes to keep working exactly as before
 - After a successful `verify`, the token is authorized to call `fetchCode` for 5 minutes
   (`SESSION_TTL_SEC`) without re-querying REDCap, so the 2-minute polling loop doesn't hammer
   the REDCap API.
-- The REDCap token lives in Script Properties (server-side, per-project) — never in the source
-  file, never sent to the browser, and never committed to git.
+- Every study's REDCap credentials live only in that deployment's Script Properties (server-side,
+  per-project) — never in the source file, never sent to the browser, never in `studies.json`,
+  never committed to git. Multiple studies' credentials on one hub deployment share that
+  project's property store, but remain fully independent JSON blobs from each other.
 - Gmail scopes granted to the script (read + modify, to mark messages read) are broad by
-  necessity — the script account should be a dedicated study inbox, not a personal one.
+  necessity — a Case A deployment's account should be a dedicated study inbox, not a personal one.
 - `fetchCode` returns up to the 10 most recent matching emails (not just unread ones) within
   the last day, so a participant can see prior codes if more than one arrived — the frontend
   shows the newest prominently and the rest behind an auto-expand/collapse toggle. This means
@@ -215,17 +232,13 @@ Existing dedicated deployments need no changes to keep working exactly as before
 - The Gmail search covers `in:anywhere` (including Spam and Trash), not just Inbox — third-party
   device-vendor mail is exactly the kind of thing Gmail sometimes misfires on, and a code
   silently landing in Spam would otherwise look like total failure with nothing to debug.
-- `healthCheck` is a public, unauthenticated action (anyone with the deployment URL can call
-  it) by design, so it deliberately returns only pass/fail booleans and short diagnostic
-  strings — never the actual REDCap token, URL, or other secret values.
-- **Hub mode concentrates trust in the hub's Gmail owner.** Forwarded studies' verification
+- `healthCheck` is a public, unauthenticated action (anyone with the deployment URL and a valid
+  `base` can call it) by design, so it deliberately returns only pass/fail booleans and short
+  diagnostic strings — never the actual REDCap token, URL, or other secret values.
+- **Forwarded (Case B) studies concentrate trust in the hub's Gmail owner.** Their verification
   emails land in the hub's own inbox (that's how forwarding works), so whoever controls that
   Google account can technically read every forwarded study's mail, same as they already could
-  for their own dedicated study. This is the tradeoff of not requiring account handover — the
+  for their own Case A study. This is the tradeoff of not requiring account handover — the
   researcher never shares their own Gmail, but they are trusting the hub operator with copies
-  of their participants' verification mail. Make sure that's an acceptable tradeoff for your
-  institution's data-handling requirements before offering hub mode to other researchers.
-- A `STUDY_<SLUG>` hub config's REDCap token is only as safe as the hub deployment's own Script
-  Properties — same protection as dedicated mode (never in source, never sent to the browser),
-  but now multiple studies' REDCap tokens live in one project's property store instead of being
-  split across separate Apps Script projects.
+  of their participants' verification mail. Make sure that's acceptable for your institution's
+  data-handling requirements before offering this to other researchers.

@@ -15,167 +15,141 @@
  * `patient_token`) — there is no separate Participant ID input. The token
  * is looked up in REDCap via filterLogic to find the matching record.
  *
- * ── Two deployment modes, same file ──────────────────────────────────
+ * ── One config mechanism for every study ─────────────────────────────
  *
- * 1. Dedicated (default): this script's own Gmail account IS the study's
- *    device-verification inbox. Config is flat Script Properties
- *    (REDCAP_API_URL etc.) — see setup_() below. This is unchanged from
- *    earlier versions and needs no `base` value to work.
+ * Every study this deployment serves — whether its Gmail account IS this
+ * script's own account, or its mail is forwarded in from somewhere else
+ * — is a single `STUDY_<BASE>` Script Property holding one JSON blob
+ * (see registerStudy_() below). `base` is always the same value the
+ * frontend sends as `?base=` and the same value used as the Gmail
+ * plus-addressing prefix for that study's participant aliases
+ * (base+recordId@gmail.com) — assumed gmail.com for now.
  *
- * 2. Hub (forwarded): this script's Gmail account is a shared *hub* that
- *    OTHER researchers forward their own device-verification mail into,
- *    without ever sharing account access — they add this hub's address
- *    as a Gmail forwarding target in their own inbox and filter matching
- *    mail to it, forwarding to <hub username>+<base>@gmail.com where
- *    `base` is the same value used in that study's `?base=` link. Each
- *    study is registered here via registerStudy_() with its own REDCap
- *    URL/token and the researcher's own base email (used only to compute
- *    what a participant's original alias looks like) — the relay alias
- *    itself is never specified separately; it's always derived from
- *    HUB_GMAIL_USERNAME (this hub's own Gmail username) + the study's
- *    `base`, so there's exactly one formula to give every researcher,
- *    not a per-study value that has to match exactly by hand.
- *    The frontend sends a `base` value on every request; if a matching
- *    STUDY_<BASE> Script Property exists, hub mode is used for that
- *    request — otherwise it falls back to dedicated/flat config,
- *    ignoring it. A single deployment can mix both: serve its own
- *    dedicated study AND host any number of forwarded ones.
+ * A study is one of two kinds, set via `forwarded` in its config:
+ *
+ * - forwarded: false (default) — this script's OWN Gmail account is the
+ *   study's inbox, and `base` IS that account's username. E.g. if this
+ *   script runs under samma.study@gmail.com, register it with
+ *   base = "samma.study" and nothing else Gmail-related to configure —
+ *   participant aliases are searched directly on this account.
+ *
+ * - forwarded: true — mail arrives here via another researcher's own
+ *   Gmail forwarding filter, without that researcher ever sharing
+ *   account access. Requires `baseEmail` (their own Gmail address, used
+ *   only to compute what a participant's original alias looks like) and
+ *   the GMAIL_USERNAME Script Property (this script's own account's
+ *   username) to be set. The relay alias participants' mail actually
+ *   forwards to is always derived as GMAIL_USERNAME+base@gmail.com — one
+ *   formula, never specified separately. The original per-participant
+ *   address is recovered from the forwarded copy's preserved To: header
+ *   (Gmail's automatic forwarding is a true SMTP relay and doesn't
+ *   rewrite it), since the relay alias alone only narrows a search down
+ *   to "this study," not "this participant."
+ *
+ * A single deployment can host any mix of both kinds simultaneously.
  *
  * Secrets are NOT stored in this file. They live in Script Properties,
  * which are per-project, not part of the source, and never committed to
- * git. See README.md for full setup steps for both modes.
+ * git — see README.md for full setup steps.
  */
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-// Required for dedicated/flat mode — no defaults, fails loudly if unset.
-const REQUIRED_PROPERTIES = ['REDCAP_API_URL', 'REDCAP_API_TOKEN', 'BASE_EMAIL'];
-
-// Optional in both modes — fall back to these if unset/omitted. Override
-// only if a study's REDCap project names these fields differently.
-const OPTIONAL_PROPERTY_DEFAULTS = {
+const OPTIONAL_STUDY_FIELD_DEFAULTS = {
   ACCESS_TOKEN_FIELD: 'patient_token',
   // REDCap field holding a full override email address for a participant's
   // device, if their study collects one directly instead of relying on the
   // record_id-derived "+alias" scheme. Must exist in REDCap (any name is
-  // fine via this property) — every study using this script needs *some*
-  // field here, even if it's usually left blank per record.
+  // fine via this property) — every study needs *some* field here, even
+  // if it's usually left blank per record.
   DEVICE_EMAIL_FIELD: 'device_email',
   // REDCap field whose value must equal '1' for a participant to be
   // considered active for forwarding. Must exist in REDCap.
   FORWARDING_STATUS_FIELD: 'forwarding_status'
 };
 
-// How many threads to pull back on an initial Gmail search. Hub mode
-// searches a whole study's shared relay alias (many participants), so it
-// needs a wider net than dedicated mode's per-participant search before
-// filtering down to the right one.
+// How many threads to pull back on an initial Gmail search. Forwarded
+// mode searches a whole study's shared relay alias (many participants),
+// so it needs a wider net than dedicated mode's per-participant search
+// before filtering down to the right one.
 const DEDICATED_SEARCH_LIMIT = 10;
-const HUB_SEARCH_LIMIT = 50;
+const FORWARDED_SEARCH_LIMIT = 50;
 
 function getConfig_(base) {
+  if (!base) {
+    throw new Error('Missing study identifier.');
+  }
+
   const props = PropertiesService.getScriptProperties();
-
-  if (base) {
-    const raw = props.getProperty('STUDY_' + base.toUpperCase());
-    if (raw) {
-      return normalizeHubConfig_(raw, base, props);
-    }
-    // No matching hub registration for this base — fall through to
-    // dedicated/flat config below, so a non-hub deployment just ignores
-    // an unrecognized value rather than failing.
+  const raw = props.getProperty('STUDY_' + base.toUpperCase());
+  if (!raw) {
+    throw new Error('Unknown study "' + base + '". Has it been registered with registerStudy_()?');
   }
 
-  const config = {};
-  REQUIRED_PROPERTIES.forEach((key) => { config[key] = props.getProperty(key); });
-  const missing = REQUIRED_PROPERTIES.filter((key) => !config[key]);
-  if (missing.length > 0) {
-    throw new Error('Missing Script Properties: ' + missing.join(', ') + '. See README.md.');
-  }
-
-  Object.keys(OPTIONAL_PROPERTY_DEFAULTS).forEach((key) => {
-    config[key] = props.getProperty(key) || OPTIONAL_PROPERTY_DEFAULTS[key];
-  });
-
-  config.HUB = false;
-  return config;
-}
-
-function normalizeHubConfig_(rawJson, base, props) {
-  let raw;
+  let study;
   try {
-    raw = JSON.parse(rawJson);
+    study = JSON.parse(raw);
   } catch (err) {
     throw new Error('Malformed STUDY_' + base.toUpperCase() + ' config (invalid JSON).');
   }
 
-  const required = ['redcapApiUrl', 'redcapApiToken', 'baseEmail'];
-  const missing = required.filter((key) => !raw[key]);
+  const missing = ['redcapApiUrl', 'redcapApiToken'].filter((key) => !study[key]);
   if (missing.length > 0) {
     throw new Error('Study "' + base + '" config missing: ' + missing.join(', '));
   }
 
-  // Hub's own Gmail username (the part before @gmail.com) — assumes
-  // gmail.com for now, same as the rest of this script's plus-addressing
-  // and forwarding logic, which is Gmail-specific either way.
-  const hubUsername = props.getProperty('HUB_GMAIL_USERNAME');
-  if (!hubUsername) {
-    throw new Error('Missing Script Property: HUB_GMAIL_USERNAME (required for any hub-mode study).');
+  const forwarded = !!study.forwarded;
+  let baseEmail;
+  let relayAlias; // only meaningful when forwarded
+
+  if (forwarded) {
+    if (!study.baseEmail) {
+      throw new Error('Study "' + base + '" has forwarded: true but is missing baseEmail (the researcher\'s own Gmail address).');
+    }
+    const gmailUsername = props.getProperty('GMAIL_USERNAME');
+    if (!gmailUsername) {
+      throw new Error('Missing Script Property: GMAIL_USERNAME (required for any forwarded study).');
+    }
+    baseEmail = study.baseEmail;
+    relayAlias = gmailUsername + '+' + base + '@gmail.com';
+  } else {
+    // Not forwarded: this script's own account IS the study's inbox, and
+    // `base` IS that account's Gmail username — nothing else to store.
+    baseEmail = base + '@gmail.com';
   }
 
   return {
-    REDCAP_API_URL: raw.redcapApiUrl,
-    REDCAP_API_TOKEN: raw.redcapApiToken,
-    BASE_EMAIL: raw.baseEmail,
-    ACCESS_TOKEN_FIELD: raw.accessTokenField || OPTIONAL_PROPERTY_DEFAULTS.ACCESS_TOKEN_FIELD,
-    FORWARDING_STATUS_FIELD: raw.forwardingStatusField || OPTIONAL_PROPERTY_DEFAULTS.FORWARDING_STATUS_FIELD,
-    DEVICE_EMAIL_FIELD: raw.deviceEmailField || OPTIONAL_PROPERTY_DEFAULTS.DEVICE_EMAIL_FIELD,
-    // Always derived, never specified per study: <hub username>+<base>@gmail.com.
-    // One formula every researcher gets, instead of a value that has to
-    // match a per-study setting exactly by hand.
-    RELAY_ALIAS: hubUsername + '+' + base + '@gmail.com',
-    HUB: true
+    REDCAP_API_URL: study.redcapApiUrl,
+    REDCAP_API_TOKEN: study.redcapApiToken,
+    BASE_EMAIL: baseEmail,
+    RELAY_ALIAS: relayAlias,
+    FORWARDED: forwarded,
+    ACCESS_TOKEN_FIELD: study.accessTokenField || OPTIONAL_STUDY_FIELD_DEFAULTS.ACCESS_TOKEN_FIELD,
+    FORWARDING_STATUS_FIELD: study.forwardingStatusField || OPTIONAL_STUDY_FIELD_DEFAULTS.FORWARDING_STATUS_FIELD,
+    DEVICE_EMAIL_FIELD: study.deviceEmailField || OPTIONAL_STUDY_FIELD_DEFAULTS.DEVICE_EMAIL_FIELD
   };
 }
 
-// One-time setup helper for DEDICATED mode — run manually from the Apps
-// Script editor (select this function, click Run) instead of using the
-// Project Settings UI, if you prefer. Fill in real values first, run
-// once, then it's safe to leave these lines in place (they only ever
-// write to this specific project's Script Properties, never to git).
-function setup_() {
-  PropertiesService.getScriptProperties().setProperties({
-    REDCAP_API_URL: 'https://your-redcap-instance.org/api/',
-    REDCAP_API_TOKEN: 'YOUR_REDCAP_API_TOKEN',
-    BASE_EMAIL: 'study@gmail.com'
-    // ACCESS_TOKEN_FIELD: 'patient_token', // optional — uncomment to override
-  });
+// Only required if this deployment will host any forwarded study — not
+// needed for a deployment that only ever serves its own dedicated
+// study/studies. This script's own Gmail username (before @gmail.com).
+function setGmailUsername_() {
+  PropertiesService.getScriptProperties().setProperty('GMAIL_USERNAME', 'yourhub');
 }
 
-// Required once per hub-mode deployment (not per study) — this hub's own
-// Gmail username (the part before @gmail.com). Every hub study's relay
-// alias is derived from this plus its `base` value, so it only needs to
-// be set once here, regardless of how many studies the hub serves.
-function setupHub_() {
-  PropertiesService.getScriptProperties().setProperty('HUB_GMAIL_USERNAME', 'yourhub');
-}
-
-// One-time helper for registering a NEW forwarded (hub) study on this
-// deployment. Fill in real values, select this function from the
-// dropdown, click Run once. `base` must exactly match (case-insensitive)
-// the `?base=` value the frontend's studies.json entry uses for this
-// study — it's also what the relay alias is derived from, so give the
-// researcher the resulting address (shown in the log after running this)
-// to forward into. Requires HUB_GMAIL_USERNAME to already be set
-// (setupHub_()).
+// The one way to register any study, dedicated or forwarded. Fill in
+// real values, select this function from the dropdown, click Run once.
 //
-// Each study keeps its own REDCap URL + token here, completely separate
-// from every other study's — this is the one thing that's always
-// per-study and can't be shared or derived, since each researcher's
-// REDCap project (often a different institution's REDCap instance
-// entirely) needs its own credential. Nothing about how many studies a
-// hub hosts changes that; it's just one more STUDY_<BASE> property per
-// study, each with its own redcapApiUrl/redcapApiToken pair.
+// Dedicated study (this script's own Gmail account is the inbox): set
+// `base` to exactly match this account's own Gmail username, leave
+// `forwarded: false`, and omit `baseEmail` entirely.
+//
+// Forwarded study (mail relayed in from another researcher's own
+// Gmail, who never shares account access): set `forwarded: true` and
+// `baseEmail` to their Gmail address; `base` can be any short routing
+// key you choose. Requires GMAIL_USERNAME to already be set
+// (setGmailUsername_()) — the relay alias they need to forward into is
+// logged after running this.
 function registerStudy_() {
   const base = 'BASE_HERE';
   PropertiesService.getScriptProperties().setProperty(
@@ -183,17 +157,21 @@ function registerStudy_() {
     JSON.stringify({
       redcapApiUrl: 'https://their-redcap-instance.org/api/',
       redcapApiToken: 'THEIR_REDCAP_API_TOKEN',
-      baseEmail: 'their-study-inbox@gmail.com', // the researcher's OWN Gmail — used only to derive expected +alias addresses, never searched directly
-      accessTokenField: 'patient_token',        // optional, shown are the defaults
+      forwarded: false,
+      // baseEmail: 'their-study-inbox@gmail.com', // required only if forwarded: true
+      accessTokenField: 'patient_token',           // optional, shown are the defaults
       forwardingStatusField: 'forwarding_status',
       deviceEmailField: 'device_email'
     })
   );
-  const hubUsername = PropertiesService.getScriptProperties().getProperty('HUB_GMAIL_USERNAME');
-  Logger.log('Relay alias for this study: ' + hubUsername + '+' + base + '@gmail.com');
+
+  const gmailUsername = PropertiesService.getScriptProperties().getProperty('GMAIL_USERNAME');
+  if (gmailUsername) {
+    Logger.log('If forwarded, relay alias for this study: ' + gmailUsername + '+' + base + '@gmail.com');
+  }
 }
 
-// Removes a hub study's registration. Run manually with the right base.
+// Removes a study's registration. Run manually with the right base.
 function unregisterStudy_() {
   const base = 'BASE_HERE';
   PropertiesService.getScriptProperties().deleteProperty('STUDY_' + base.toUpperCase());
@@ -219,6 +197,9 @@ function doPost(e) {
 
   const action = body.action;
   const base = sanitizeBase_(body.base);
+  if (!base) {
+    return jsonOutput({ success: false, error: 'Missing or invalid study identifier.' });
+  }
 
   // healthCheck is a config/connectivity diagnostic, not a participant
   // action — it doesn't take or need a token.
@@ -256,15 +237,14 @@ function handleHealthCheck(base) {
 
   try {
     config = getConfig_(base);
-    const mode = config.HUB ? 'hub study "' + base + '"' : 'dedicated/default';
-    checks.push({ label: 'Config resolved (' + mode + ')', ok: true });
+    checks.push({ label: 'Config resolved (' + (config.FORWARDED ? 'forwarded' : 'dedicated') + ')', ok: true });
   } catch (err) {
     checks.push({ label: 'Config resolved', ok: false, detail: err.message });
     return { checks: checks, ok: false };
   }
 
   checks.push(checkRedcap_(config));
-  checks.push(config.HUB ? checkRelay_(config) : checkGmail_());
+  checks.push(config.FORWARDED ? checkRelay_(config) : checkGmail_());
 
   return { checks: checks, ok: checks.every((c) => c.ok) };
 }
@@ -376,10 +356,10 @@ function handleFetchCode(token, base) {
   // thing Gmail sometimes misfires on, and a code silently landing in
   // Spam would otherwise look like total failure with nothing to debug.
   let threads;
-  if (config.HUB) {
-    // Hub mode: the relay alias only narrows to "this study" (many
-    // participants share it) — filtered down to "this participant" below.
-    threads = GmailApp.search('to:' + config.RELAY_ALIAS + ' newer_than:1d in:anywhere', 0, HUB_SEARCH_LIMIT);
+  if (config.FORWARDED) {
+    // The relay alias only narrows to "this study" (many participants
+    // share it) — filtered down to "this participant" below.
+    threads = GmailApp.search('to:' + config.RELAY_ALIAS + ' newer_than:1d in:anywhere', 0, FORWARDED_SEARCH_LIMIT);
   } else {
     threads = GmailApp.search('to:' + expectedAddress + ' newer_than:1d in:anywhere', 0, DEDICATED_SEARCH_LIMIT);
   }
@@ -392,12 +372,12 @@ function handleFetchCode(token, base) {
     allMessages = allMessages.concat(thread.getMessages());
   });
 
-  if (config.HUB) {
+  if (config.FORWARDED) {
     // Gmail's automatic forwarding (Settings/Filters "Forward it to") is
     // a true SMTP relay — it preserves the original message's To: header
-    // rather than rewriting it to the hub's own relay address. That
-    // preserved header is how we recover which participant a forwarded
-    // message actually belongs to.
+    // rather than rewriting it to the relay address. That preserved
+    // header is how we recover which participant a forwarded message
+    // actually belongs to.
     allMessages = allMessages.filter((message) => {
       const to = (message.getTo() || '').toLowerCase();
       return to.indexOf(expectedAddress) !== -1;
@@ -507,9 +487,11 @@ function sanitizeToken(token) {
   return /^[A-Za-z0-9_-]{4,64}$/.test(str) ? str : null;
 }
 
+// Allows dots — real Gmail addresses commonly contain them (e.g. a
+// dedicated study's own username is often "study.name"-shaped).
 function sanitizeBase_(base) {
   const str = String(base || '').trim();
-  return /^[A-Za-z0-9_-]{1,64}$/.test(str) ? str : '';
+  return /^[A-Za-z0-9._-]{1,64}$/.test(str) ? str : '';
 }
 
 function jsonOutput(obj) {

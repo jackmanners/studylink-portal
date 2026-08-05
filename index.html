@@ -150,6 +150,18 @@
     margin: -8px 0 16px;
     min-height: 1em;
   }
+  /* Plain spinner — used everywhere except the login button, which gets
+     the more elaborate breathing-dots .loader below. */
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid rgba(0, 0, 0, 0.12);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   .loader {
     display: flex;
     align-items: center;
@@ -236,6 +248,12 @@
     0% { transform: scale(0.96); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
   }
+  .code-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
   .code-value {
     font-family: var(--font-display);
     font-size: 2.5rem;
@@ -245,6 +263,23 @@
     color: var(--primary);
     transition: font-size 0.3s, color 0.3s;
   }
+  .copy-btn {
+    flex: none;
+    width: auto;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .copy-btn:hover { background: none; color: var(--primary); }
+  .copy-btn svg { width: 16px; height: 16px; display: block; }
+  .copy-btn.copied { color: var(--success); }
+  .code-value-row .copy-btn svg { width: 20px; height: 20px; }
   /* Only match found, but stale — de-emphasize instead of announcing it
      like a fresh code, since it likely isn't what the participant needs. */
   .code-display.stale {
@@ -300,6 +335,11 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 0.8rem;
+  }
+  .code-history-code-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .code-history-code {
     font-family: var(--font-display);
@@ -395,7 +435,7 @@
 
   <!-- Shown while studies.json loads, or if the ?base= link is missing/unknown -->
   <div class="card" id="statusCard">
-    <div class="status-icon" id="statusIcon"><span class="loader"><span></span><span></span><span></span><span></span><span></span></span></div>
+    <div class="status-icon" id="statusIcon"><span class="spinner"></span></div>
     <p class="eyebrow">StudyLink Portal</p>
     <h1 id="statusHeading">Loading…</h1>
     <p class="subtitle" id="statusMessage" aria-live="polite">One moment.</p>
@@ -432,7 +472,10 @@
           <div class="status-line" id="statusLine" aria-live="polite"></div>
 
           <div class="code-display hidden" id="codeDisplay">
-            <div class="code-value" id="codeValue"></div>
+            <div class="code-value-row">
+              <div class="code-value" id="codeValue"></div>
+              <button type="button" class="copy-btn" id="copyPrimaryBtn" aria-label="Copy code"></button>
+            </div>
             <div class="code-subject" id="codeSubject"></div>
             <div class="code-age" id="codeAge"></div>
           </div>
@@ -502,6 +545,7 @@
   const statusLine = document.getElementById('statusLine');
   const codeDisplay = document.getElementById('codeDisplay');
   const codeValue = document.getElementById('codeValue');
+  const copyPrimaryBtn = document.getElementById('copyPrimaryBtn');
   const codeSubject = document.getElementById('codeSubject');
   const codeAge = document.getElementById('codeAge');
   const historyToggle = document.getElementById('historyToggle');
@@ -714,6 +758,7 @@
     fetchBtn.textContent = 'Fetch Device Code';
     statusLine.textContent = 'Code received.';
     codeValue.textContent = result.code;
+    copyPrimaryBtn.dataset.code = result.code;
     codeSubject.textContent = result.subject || '';
 
     const ageMinutes = (Date.now() - new Date(result.receivedAt).getTime()) / 60000;
@@ -742,7 +787,10 @@
       const code = escapeHtml(m.code || '');
       const when = escapeHtml(relativeTime(m.receivedAt));
       return '<div class="code-history-item">' +
-        '<span class="code-history-code">' + code + '</span>' +
+        '<span class="code-history-code-group">' +
+          '<span class="code-history-code">' + code + '</span>' +
+          '<button type="button" class="copy-btn" data-code="' + code + '" aria-label="Copy code">' + COPY_ICON_SVG + '</button>' +
+        '</span>' +
         '<span class="code-history-meta" title="' + subject + '">' + when + '</span>' +
         '</div>';
     }).join('');
@@ -760,6 +808,47 @@
     codeHistory.classList.remove('hidden');
     historyToggle.classList.add('hidden');
   });
+
+  // ── Copy to clipboard ────────────────────────────────────────────────
+  const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+  const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+  copyPrimaryBtn.innerHTML = COPY_ICON_SVG;
+  copyPrimaryBtn.addEventListener('click', () => copyCode(copyPrimaryBtn, copyPrimaryBtn.dataset.code));
+
+  // Delegated: history items are re-rendered wholesale on every code fetch.
+  codeHistory.addEventListener('click', (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (btn) copyCode(btn, btn.dataset.code);
+  });
+
+  async function copyCode(button, code) {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch (err) {
+      // Clipboard API needs a secure context/permission; fall back to a
+      // hidden textarea + execCommand for older or restricted browsers.
+      const textarea = document.createElement('textarea');
+      textarea.value = code;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try { document.execCommand('copy'); } catch (err2) { /* give up quietly */ }
+      document.body.removeChild(textarea);
+    }
+    const original = button.innerHTML;
+    button.innerHTML = CHECK_ICON_SVG;
+    button.classList.add('copied');
+    setTimeout(() => {
+      button.innerHTML = original;
+      button.classList.remove('copied');
+    }, 1500);
+  }
 
   function relativeTime(isoString) {
     const minutes = Math.max(0, Math.round((Date.now() - new Date(isoString).getTime()) / 60000));
@@ -786,8 +875,7 @@
   healthCheckBtn.addEventListener('click', async () => {
     codeCardPanel.classList.add('hidden');
     healthCard.classList.remove('hidden');
-    healthResults.innerHTML = '<div class="loader" style="color: var(--muted); justify-content: flex-start;">' +
-      '<span></span><span></span><span></span><span></span><span></span></div>';
+    healthResults.innerHTML = '<span class="spinner"></span>';
     flipInner.classList.add('flipped');
 
     try {
