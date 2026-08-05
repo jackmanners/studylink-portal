@@ -388,6 +388,57 @@
     text-decoration: underline;
   }
   footer a:hover { color: var(--primary-dark); }
+
+  .scan-qr-btn {
+    background: var(--bg);
+    color: var(--primary);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .scan-qr-btn:hover:not(:disabled) { background: var(--border); }
+  .scan-qr-btn svg { width: 18px; height: 18px; }
+
+  .qr-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 1000;
+  }
+  .qr-overlay video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .qr-frame {
+    position: relative;
+    width: min(70vw, 280px);
+    height: min(70vw, 280px);
+    border: 3px solid #fdfaf3;
+    border-radius: 16px;
+    box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.45);
+  }
+  .qr-overlay-msg {
+    position: relative;
+    color: #fdfaf3;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 0 20px;
+    max-width: 340px;
+  }
+  .qr-cancel-btn {
+    position: relative;
+    width: auto;
+    padding: 10px 28px;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .qr-cancel-btn:hover { background: rgba(255, 255, 255, 0.25); }
 </style>
 </head>
 <body>
@@ -401,6 +452,17 @@
         <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
         <h1>Sign in</h1>
         <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
+
+        <button type="button" class="scan-qr-btn" id="scanQrBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+            <rect x="7" y="7" width="4" height="4"></rect><rect x="13" y="7" width="4" height="4"></rect>
+            <rect x="7" y="13" width="4" height="4"></rect><line x1="15" y1="15" x2="15" y2="15.01"></line>
+            <line x1="18" y1="13" x2="18" y2="17"></line>
+          </svg>
+          Scan QR code
+        </button>
 
         <label for="studyBaseInput">Study</label>
         <input type="text" id="studyBaseInput" list="studyBaseList" placeholder="e.g. samma.study" autocomplete="off" />
@@ -455,6 +517,14 @@
   <footer>
     Need help? Contact <a href="mailto:jack.manners@flinders.edu.au">Jack Manners</a> at Flinders University.
   </footer>
+
+  <!-- Camera overlay for in-app QR scanning -->
+  <div class="qr-overlay hidden" id="qrOverlay">
+    <video id="qrVideo" autoplay playsinline muted></video>
+    <div class="qr-frame"></div>
+    <p class="qr-overlay-msg" id="qrOverlayMsg">Point your camera at the QR code.</p>
+    <button type="button" class="qr-cancel-btn" id="qrCancelBtn">Cancel</button>
+  </div>
 
 <script>
   // ── Configuration ────────────────────────────────────────────────────
@@ -601,6 +671,95 @@
       setStudyResolved(false);
     }
   });
+
+  // ── QR scanning ──────────────────────────────────────────────────────
+  // Reads the participant's link (?base=&token=) straight out of a QR
+  // code's own decoded text, without navigating — works the same whether
+  // this is running as an installed PWA or a plain browser tab, since
+  // scanning with the OS camera app can't be relied on to reopen the PWA.
+  const scanQrBtn = document.getElementById('scanQrBtn');
+  const qrOverlay = document.getElementById('qrOverlay');
+  const qrVideo = document.getElementById('qrVideo');
+  const qrOverlayMsg = document.getElementById('qrOverlayMsg');
+  const qrCancelBtn = document.getElementById('qrCancelBtn');
+
+  let qrStream = null;
+  let qrScanning = false;
+
+  if (!('BarcodeDetector' in window)) {
+    scanQrBtn.classList.add('hidden');
+  }
+
+  scanQrBtn.addEventListener('click', startQrScan);
+  qrCancelBtn.addEventListener('click', stopQrScan);
+
+  async function startQrScan() {
+    qrOverlayMsg.textContent = 'Point your camera at the QR code.';
+    qrOverlay.classList.remove('hidden');
+
+    try {
+      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch (err) {
+      qrOverlayMsg.textContent = 'Could not access the camera. Please allow camera access and try again.';
+      return;
+    }
+
+    qrVideo.srcObject = qrStream;
+    await qrVideo.play();
+
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    qrScanning = true;
+    scanQrFrame(detector);
+  }
+
+  async function scanQrFrame(detector) {
+    if (!qrScanning) return;
+    try {
+      const codes = await detector.detect(qrVideo);
+      if (codes.length > 0) {
+        handleQrResult(codes[0].rawValue);
+        return;
+      }
+    } catch (err) {
+      // Transient decode errors (e.g. a frame mid-focus-change) are ignored.
+    }
+    requestAnimationFrame(() => scanQrFrame(detector));
+  }
+
+  function stopQrScan() {
+    qrScanning = false;
+    if (qrStream) {
+      qrStream.getTracks().forEach((track) => track.stop());
+      qrStream = null;
+    }
+    qrVideo.srcObject = null;
+    qrOverlay.classList.add('hidden');
+  }
+
+  function handleQrResult(rawValue) {
+    let url;
+    try {
+      url = new URL(rawValue);
+    } catch (err) {
+      qrOverlayMsg.textContent = 'That QR code doesn\'t contain a valid link. Please try again.';
+      return;
+    }
+
+    const base = url.searchParams.get('base');
+    const token = url.searchParams.get('token');
+    stopQrScan();
+
+    if (!base) {
+      studyBaseError.textContent = 'That QR code is missing a study identifier.';
+      return;
+    }
+
+    studyBaseInput.value = base;
+    resolveStudy(base);
+    if (token) {
+      patientTokenInput.value = token;
+    }
+  }
 
   // Sending as text/plain avoids a CORS preflight against the Apps Script
   // endpoint (which cannot answer OPTIONS). The body is still JSON.
