@@ -195,7 +195,10 @@ function findRecordByToken(token) {
   });
 
   if (response.getResponseCode() !== 200) {
-    throw new Error('Could not reach REDCap.');
+    throw new Error(
+      'REDCap request failed (HTTP ' + response.getResponseCode() + '): ' +
+      response.getContentText().substring(0, 300)
+    );
   }
 
   let records;
