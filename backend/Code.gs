@@ -36,7 +36,10 @@ const OPTIONAL_PROPERTY_DEFAULTS = {
   // record_id-derived "+alias" scheme. Must exist in REDCap (any name is
   // fine via this property) — every study using this script needs *some*
   // field here, even if it's usually left blank per record.
-  DEVICE_EMAIL_FIELD: 'device_email'
+  DEVICE_EMAIL_FIELD: 'device_email',
+  // REDCap field whose value must equal '1' for a participant to be
+  // considered active for forwarding. Must exist in REDCap.
+  FORWARDING_STATUS_FIELD: 'forwarding_status'
 };
 
 function getConfig_() {
@@ -191,7 +194,7 @@ function findRecordByToken(token) {
     type: 'flat',
     filterLogic: '[' + config.ACCESS_TOKEN_FIELD + ']=\'' + token.replace(/'/g, "\\'") + '\'',
     'fields[0]': 'record_id',
-    'fields[1]': 'forwarding_status',
+    'fields[1]': config.FORWARDING_STATUS_FIELD,
     'fields[2]': config.DEVICE_EMAIL_FIELD,
     returnFormat: 'json'
   };
@@ -223,7 +226,7 @@ function findRecordByToken(token) {
   const raw = records[0];
   return {
     record_id: raw.record_id,
-    forwarding_status: raw.forwarding_status,
+    forwarding_status: raw[config.FORWARDING_STATUS_FIELD],
     device_email: raw[config.DEVICE_EMAIL_FIELD]
   };
 }

@@ -32,7 +32,9 @@ authentication codes sent to device-specific Gmail aliases
      characters), not something guessable. If your REDCap project names this field something
      else, add an `ACCESS_TOKEN_FIELD` Script Property set to that field's name — otherwise
      leave it unset and the default is used.
-   - `forwarding_status` — set to `1` once their device alias is active.
+   - A forwarding-status field (default name `forwarding_status`, override via a
+     `FORWARDING_STATUS_FIELD` Script Property) — set to `1` once a participant's device
+     alias is active. Login is rejected while this isn't `1`.
    - A device email field (default name `device_email`, override via a `DEVICE_EMAIL_FIELD`
      Script Property) — must exist in the project even if it's usually left blank. When a
      record has a value here, the backend searches that exact address for the code instead of
