@@ -470,6 +470,7 @@
 
   let APPS_SCRIPT_URL = null;
   let STUDY_NAME = null;
+  let STUDY_SLUG = null;
 
   const POLL_INTERVAL_MS = 5000;
   const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
@@ -534,6 +535,7 @@
 
     APPS_SCRIPT_URL = study.appsScriptUrl;
     STUDY_NAME = study.name || 'StudyLink Portal';
+    STUDY_SLUG = slug;
     document.title = STUDY_NAME;
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
 
@@ -555,11 +557,15 @@
 
   // Sending as text/plain avoids a CORS preflight against the Apps Script
   // endpoint (which cannot answer OPTIONS). The body is still JSON.
+  // `study` is always included so a shared hub deployment (serving
+  // multiple forwarded-mail studies from one Apps Script) knows which
+  // study's config to use — a dedicated single-study deployment just
+  // ignores it.
   async function callBackend(action, extra) {
     const response = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action: action }, extra))
+      body: JSON.stringify(Object.assign({ action: action, study: STUDY_SLUG }, extra))
     });
     if (!response.ok) {
       throw new Error('Network error (' + response.status + ')');

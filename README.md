@@ -5,8 +5,10 @@ authentication codes sent to device-specific Gmail aliases
 (`study+001@gmail.com`, `study+002@gmail.com`, ...).
 
 - **Frontend** ([index.html](index.html)): static single-page app, hosted free on GitHub Pages.
-- **Backend** ([backend/Code.gs](backend/Code.gs)): Google Apps Script Web App. Talks to the master
-  Gmail inbox and the REDCap API. Holds the REDCap token — never exposed to the browser.
+- **Backend** ([backend/Code.gs](backend/Code.gs)): Google Apps Script Web App. Talks to a Gmail
+  inbox and the REDCap API. Holds the REDCap token — never exposed to the browser. Supports two
+  modes: a study's own dedicated inbox (default), or a shared **hub** that other researchers
+  forward their mail into without handing over account access — see "Hub mode" below.
 
 ## 1. Deploy the Apps Script backend
 
@@ -124,6 +126,57 @@ compartmentalized instead — separate repos, separate Pages sites, no shared re
 this repo per study and hardcode `APPS_SCRIPT_URL`/`STUDY_NAME` directly in `index.html`
 instead of using `studies.json`.
 
+## Hub mode: hosting a study whose Gmail you don't control
+
+Everything above assumes you (or someone on your team) can create an Apps Script project
+*inside* the study's own Gmail account. That's not always true — a colleague running their own
+study may want to use this system without handing over account access, or without doing any
+Apps Script setup themselves at all.
+
+**Hub mode solves this with Gmail's own mail forwarding, not account delegation.** One Apps
+Script deployment (the "hub" — typically your existing dedicated deployment, or a fresh one)
+can additionally host any number of *forwarded* studies:
+
+1. The other researcher keeps their own Gmail exactly as-is. In their Gmail settings, they add
+   your hub's Gmail address as a **forwarding address** (Settings → Forwarding and POP/IMAP →
+   Add a forwarding address), which sends a one-time verification email to the hub inbox —
+   someone with hub access clicks the confirmation link once.
+2. They create a **filter** in their own Gmail matching their device-verification pattern
+   (e.g. `to:(theirprefix+*)`) with the action "Forward it to" your hub, targeting a **relay
+   alias** unique to their study — a plus-address on the hub's own account, e.g.
+   `yourhub+theirslug@gmail.com`. Nothing else about their inbox changes, and they can delete
+   the filter at any time to stop it — no token or account access to revoke on your end.
+3. On the hub, run `registerStudy_()` in `Code.gs` once (see the template function — fill in
+   their REDCap URL/token, their own Gmail address as `baseEmail`, and the relay alias you
+   agreed on, then run it from the Apps Script editor's function dropdown). This writes one
+   `STUDY_<SLUG>` Script Property containing that study's config as JSON.
+4. Add an entry to `studies.json` for their slug, pointing `appsScriptUrl` at the **hub's**
+   `/exec` URL (the same URL as any other study already hosted there).
+5. Give them the same `?study=<slug>` link as any other study. The frontend already sends the
+   slug on every request (used for routing on the hub), so nothing else changes for
+   participants.
+
+**How the hub tells participants apart.** The relay alias only narrows a search down to "mail
+for this study" — many participants share it. Gmail's *automatic* forwarding (via Settings or
+a Filter's "Forward it to" action) is a true SMTP relay: it preserves the original message's
+`To:` header rather than rewriting it, unlike a human manually clicking "Forward" in the Gmail
+UI (which wraps everything in a new message and loses the original headers). The hub reads that
+preserved header to work out which participant's original alias (`theirprefix+recordId@theirgmail.com`,
+computed from the `baseEmail` in that study's config, exactly as in dedicated mode) a forwarded
+message actually belongs to. **Worth confirming this empirically with a real test send** before
+relying on it for a study — send a test verification email through the researcher's filter and
+check it via "Check system status," since exact header-preservation behavior isn't something
+Google documents in detail and could have edge cases.
+
+**Mixing modes.** A single deployment can serve its own dedicated study (flat Script
+Properties, unchanged) *and* any number of hub studies (`STUDY_<SLUG>` properties)
+simultaneously — `getConfig_()` picks the right one per-request based on the `study` slug sent
+by the frontend, falling back to the dedicated/flat config if no matching `STUDY_<SLUG>` exists.
+Existing dedicated deployments need no changes to keep working exactly as before.
+
+**Removing a hub study:** run `unregisterStudy_()` with the right slug, and remove its
+`studies.json` entry.
+
 ## Security notes (read before enrolling real participants)
 
 - **The access token is the only credential.** The frontend has no Participant ID field —
@@ -150,3 +203,14 @@ instead of using `studies.json`.
 - `healthCheck` is a public, unauthenticated action (anyone with the deployment URL can call
   it) by design, so it deliberately returns only pass/fail booleans and short diagnostic
   strings — never the actual REDCap token, URL, or other secret values.
+- **Hub mode concentrates trust in the hub's Gmail owner.** Forwarded studies' verification
+  emails land in the hub's own inbox (that's how forwarding works), so whoever controls that
+  Google account can technically read every forwarded study's mail, same as they already could
+  for their own dedicated study. This is the tradeoff of not requiring account handover — the
+  researcher never shares their own Gmail, but they are trusting the hub operator with copies
+  of their participants' verification mail. Make sure that's an acceptable tradeoff for your
+  institution's data-handling requirements before offering hub mode to other researchers.
+- A `STUDY_<SLUG>` hub config's REDCap token is only as safe as the hub deployment's own Script
+  Properties — same protection as dedicated mode (never in source, never sent to the browser),
+  but now multiple studies' REDCap tokens live in one project's property store instead of being
+  split across separate Apps Script projects.
