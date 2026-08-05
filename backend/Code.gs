@@ -30,7 +30,13 @@ const REQUIRED_PROPERTIES = ['REDCAP_API_URL', 'REDCAP_API_TOKEN', 'BASE_EMAIL']
 // Optional Script Properties — fall back to these if unset. Override only
 // if a given study's REDCap project names the token field differently.
 const OPTIONAL_PROPERTY_DEFAULTS = {
-  ACCESS_TOKEN_FIELD: 'patient_token'
+  ACCESS_TOKEN_FIELD: 'patient_token',
+  // REDCap field holding a full override email address for a participant's
+  // device, if their study collects one directly instead of relying on the
+  // record_id-derived "+alias" scheme. Must exist in REDCap (any name is
+  // fine via this property) — every study using this script needs *some*
+  // field here, even if it's usually left blank per record.
+  DEVICE_EMAIL_FIELD: 'device_email'
 };
 
 function getConfig_() {
@@ -124,7 +130,8 @@ function handleVerify(token) {
   }
 
   clearFailedAttempts(token);
-  startSession(token, record.record_id);
+  const deviceEmail = String(record.device_email || '').trim();
+  startSession(token, record.record_id, deviceEmail);
 
   return { success: true, recordId: record.record_id };
 }
@@ -132,13 +139,13 @@ function handleVerify(token) {
 // ── Action: fetchCode ──────────────────────────────────────────────────
 
 function handleFetchCode(token) {
-  const recordId = getSession(token);
-  if (!recordId) {
+  const session = getSession(token);
+  if (!session) {
     return { found: false, error: 'Session expired. Please sign in again.' };
   }
 
-  const alias = buildAlias(recordId);
-  const query = 'to:' + alias + ' is:unread newer_than:1d';
+  const address = session.deviceEmail || buildAlias(session.recordId);
+  const query = 'to:' + address + ' is:unread newer_than:1d';
 
   const threads = GmailApp.search(query, 0, 5);
   if (threads.length === 0) {
@@ -185,6 +192,7 @@ function findRecordByToken(token) {
     filterLogic: '[' + config.ACCESS_TOKEN_FIELD + ']=\'' + token.replace(/'/g, "\\'") + '\'',
     'fields[0]': 'record_id',
     'fields[1]': 'forwarding_status',
+    'fields[2]': config.DEVICE_EMAIL_FIELD,
     returnFormat: 'json'
   };
 
@@ -211,7 +219,13 @@ function findRecordByToken(token) {
   if (!Array.isArray(records) || records.length !== 1) {
     return null;
   }
-  return records[0];
+
+  const raw = records[0];
+  return {
+    record_id: raw.record_id,
+    forwarding_status: raw.forwarding_status,
+    device_email: raw[config.DEVICE_EMAIL_FIELD]
+  };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -244,12 +258,19 @@ function jsonOutput(obj) {
 // ── Session (per token, using CacheService) ──────────────────────────────
 // Avoids re-querying REDCap on every 5-second poll during fetchCode.
 
-function startSession(token, recordId) {
-  CacheService.getScriptCache().put('session_' + token, String(recordId), SESSION_TTL_SEC);
+function startSession(token, recordId, deviceEmail) {
+  const value = JSON.stringify({ recordId: recordId, deviceEmail: deviceEmail || '' });
+  CacheService.getScriptCache().put('session_' + token, value, SESSION_TTL_SEC);
 }
 
 function getSession(token) {
-  return CacheService.getScriptCache().get('session_' + token);
+  const raw = CacheService.getScriptCache().get('session_' + token);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
 }
 
 // ── Lockout (per token, using CacheService) ──────────────────────────────

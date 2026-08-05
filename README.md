@@ -33,6 +33,11 @@ authentication codes sent to device-specific Gmail aliases
      else, add an `ACCESS_TOKEN_FIELD` Script Property set to that field's name — otherwise
      leave it unset and the default is used.
    - `forwarding_status` — set to `1` once their device alias is active.
+   - A device email field (default name `device_email`, override via a `DEVICE_EMAIL_FIELD`
+     Script Property) — must exist in the project even if it's usually left blank. When a
+     record has a value here, the backend searches that exact address for the code instead of
+     deriving `BASE_EMAIL`'s `+recordId` alias — for participants whose device forwards to a
+     full address of its own rather than a shared inbox alias.
 5. Click **Deploy → New deployment**.
    - Type: **Web app**.
    - Execute as: **Me**.
