@@ -200,8 +200,15 @@
 </head>
 <body>
 
+  <!-- Shown while studies.json loads, or if the ?study= link is missing/unknown -->
+  <div class="card" id="statusCard">
+    <p class="eyebrow">StudyLink Portal</p>
+    <h1 id="statusHeading">Loading…</h1>
+    <p class="subtitle" id="statusMessage">One moment.</p>
+  </div>
+
   <!-- Login screen -->
-  <div class="card" id="loginCard">
+  <div class="card hidden" id="loginCard">
     <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
     <h1>Sign in</h1>
     <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
@@ -234,13 +241,15 @@
 
 <script>
   // ── Configuration ────────────────────────────────────────────────────
-  // Redeploying for a different study? These two lines are the only
-  // required edits — everything else in this file is study-agnostic.
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPTVgx4W6HoXKR4Y_wup8dSbV9CvEJbZnnXW3XDcmQKHq7mp_X6ARIQC7MG-9Qqr_uOQ/exec';
-  const STUDY_NAME = 'StudyLink Portal';
+  // One frontend deployment serves every study. Which study a visitor
+  // hits is picked by a `?study=slug` query param, resolved at load time
+  // against studies.json (a public map of slug -> Apps Script URL + name).
+  // Adding a new study is: stand up its own Apps Script backend, then add
+  // one entry to studies.json and push — no frontend redeploy needed.
+  const STUDIES_JSON_URL = 'studies.json';
 
-  document.title = STUDY_NAME;
-  document.getElementById('studyEyebrow').textContent = STUDY_NAME;
+  let APPS_SCRIPT_URL = null;
+  let STUDY_NAME = null;
 
   const POLL_INTERVAL_MS = 5000;
   const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
@@ -249,6 +258,10 @@
   let currentToken = null;
   let pollTimer = null;
   let pollAttempts = 0;
+
+  const statusCard = document.getElementById('statusCard');
+  const statusHeading = document.getElementById('statusHeading');
+  const statusMessage = document.getElementById('statusMessage');
 
   const loginForm = document.getElementById('loginForm');
   const loginBtn = document.getElementById('loginBtn');
@@ -264,6 +277,45 @@
   const codeValue = document.getElementById('codeValue');
   const codeSubject = document.getElementById('codeSubject');
   const logoutBtn = document.getElementById('logoutBtn');
+
+  // ── Study resolution ─────────────────────────────────────────────────
+  initStudy();
+
+  async function initStudy() {
+    const slug = new URLSearchParams(window.location.search).get('study');
+    if (!slug) {
+      showStudyError('Missing study link', 'This link is missing a study identifier. Please use the exact link your research team provided.');
+      return;
+    }
+
+    let studies;
+    try {
+      const response = await fetch(STUDIES_JSON_URL, { cache: 'no-store' });
+      studies = await response.json();
+    } catch (err) {
+      showStudyError('Could not load configuration', 'Please check your connection and reload the page.');
+      return;
+    }
+
+    const study = studies[slug];
+    if (!study || !study.appsScriptUrl) {
+      showStudyError('Study not found', 'This link doesn\'t match a known study. Please use the exact link your research team provided.');
+      return;
+    }
+
+    APPS_SCRIPT_URL = study.appsScriptUrl;
+    STUDY_NAME = study.name || 'StudyLink Portal';
+    document.title = STUDY_NAME;
+    document.getElementById('studyEyebrow').textContent = STUDY_NAME;
+
+    statusCard.classList.add('hidden');
+    loginCard.classList.remove('hidden');
+  }
+
+  function showStudyError(heading, message) {
+    statusHeading.textContent = heading;
+    statusMessage.textContent = message;
+  }
 
   // Sending as text/plain avoids a CORS preflight against the Apps Script
   // endpoint (which cannot answer OPTIONS). The body is still JSON.

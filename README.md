@@ -46,18 +46,27 @@ script; the `/exec` URL stays the same across versions as long as you edit the e
 deployment rather than creating a new one. Script Properties persist across redeployments —
 you only need to set them once.
 
-## 2. Wire the frontend to the backend
+## 2. Register the study in studies.json
 
-In [index.html](index.html), find:
+One frontend deployment can serve any number of studies. Which study a visitor lands on is
+picked by a `?study=slug` query parameter, resolved at page load against
+[studies.json](studies.json) — a plain public map of slug → Apps Script URL + display name:
 
-```js
-const APPS_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
-const STUDY_NAME = 'StudyLink Portal';
+```json
+{
+  "samma": {
+    "name": "SAMMA Study",
+    "appsScriptUrl": "https://script.google.com/macros/s/.../exec"
+  }
+}
 ```
 
-Replace `APPS_SCRIPT_URL` with the `/exec` URL from step 1, and `STUDY_NAME` with whatever
-label this study should show (page title + the small heading above "Sign in"). These two lines
-are the only required edits to the frontend.
+Add an entry for your study (pick any URL-safe slug), using the `/exec` URL from step 1. Give
+each participant the link `https://<you>.github.io/studylink-portal/?study=<slug>` — nothing
+else in the frontend needs to change per study.
+
+`studies.json` is public, same as the rest of this repo — see "Running multiple studies" below
+for the tradeoff that implies.
 
 ## 3. Host the frontend on GitHub Pages
 
@@ -76,23 +85,31 @@ Participants use that URL on their device to log in and fetch their code.
 
 ## Running multiple studies
 
-Nothing study-specific is hardcoded in the source — every study-specific value (REDCap
-credentials, the inbox address, the token field name, the branding label) is either a Script
-Property or one of the two frontend config lines above. To stand up a second study:
+A single Pages deployment can serve every study. Nothing in `index.html` is study-specific —
+it resolves `?study=slug` against `studies.json` at load time and fails gracefully with a
+"Study not found" message if the slug is missing or unknown. To add a new study:
 
-1. **Fork or duplicate this repo** — GitHub Pages serves one site per repo (or per branch with
-   extra setup), so the simplest path is one repo per study rather than trying to make one
-   frontend serve several backends.
-2. Create a **new Gmail account** for that study's master inbox, and a **new Apps Script
-   project** under it (step 1 above, in full — new Script Properties, new deployment, new
-   `/exec` URL).
-3. In the new repo's `index.html`, set `APPS_SCRIPT_URL` to the new deployment's URL and
-   `STUDY_NAME` to the new study's label.
-4. Enable Pages on the new repo (step 3 above).
+1. Create a **new Gmail account** for that study's master inbox, and a **new Apps Script
+   project** under it (step 1 above, in full — its own Script Properties, its own deployment,
+   its own `/exec` URL).
+2. Add one entry to `studies.json` with that URL and push. No frontend redeploy step beyond
+   the git push — GitHub Pages picks it up automatically.
+3. Send participants the link with that study's slug: `.../?study=<slug>`.
 
-Each study is fully isolated: separate Gmail inbox, separate REDCap project/token, separate
-Apps Script deployment, separate Script Properties, separate Pages site. There's no shared
-state between them beyond the shared codebase.
+Each study's **backend** stays fully isolated — separate Gmail inbox, separate REDCap
+project/token, separate Apps Script deployment, separate Script Properties, separate
+per-token lockout and session cache (Apps Script's `CacheService` is scoped per-project, so
+studies can't collide there either).
+
+The one thing that *is* shared is `studies.json` itself: it's a single public file listing
+every active study's Apps Script URL and name side by side. That's a low-severity exposure —
+the URLs aren't secrets, and `patient_token` still gates each study independently — but it does
+mean anyone who finds this repo can see the full list of studies it's currently serving, and a
+mistake in one study's `Code.gs`/REDCap setup doesn't affect others, but a mistake in
+`studies.json` (wrong URL) does. If your institution's review process wants studies fully
+compartmentalized instead — separate repos, separate Pages sites, no shared registry — fork
+this repo per study and hardcode `APPS_SCRIPT_URL`/`STUDY_NAME` directly in `index.html`
+instead of using `studies.json`.
 
 ## Security notes (read before enrolling real participants)
 
