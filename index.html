@@ -582,6 +582,11 @@
   const LAST_BASE_KEY = 'studylink_last_base';
   const RECENT_STUDIES_KEY = 'studylink_recent_studies';
   const MAX_RECENT_STUDIES = 6;
+  // Remembered per study so the token survives a reopen — iOS in
+  // particular can clear a PWA's localStorage after enough inactivity, so
+  // this is a convenience, not a guarantee; falling back to re-entering
+  // the token (or rescanning the QR code) always still works.
+  const TOKEN_KEY_PREFIX = 'studylink_token_';
 
   populateStudyDatalist();
   initStudy();
@@ -652,6 +657,13 @@
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
     rememberStudy(base, STUDY_NAME);
     setStudyResolved(true);
+
+    if (!patientTokenInput.value) {
+      const rememberedToken = localStorage.getItem(TOKEN_KEY_PREFIX + base);
+      if (rememberedToken) {
+        patientTokenInput.value = rememberedToken;
+      }
+    }
   }
 
   function setStudyResolved(resolved) {
@@ -792,6 +804,7 @@
       const result = await callBackend('verify', { token: token });
       if (result.success) {
         currentToken = token;
+        localStorage.setItem(TOKEN_KEY_PREFIX + STUDY_BASE, token);
         showCodeScreen(result.address);
       } else {
         loginError.textContent = result.error || 'Verification failed.';
@@ -823,6 +836,7 @@
     resetCodeScreen();
     clearAutoRecheck();
     currentToken = null;
+    localStorage.removeItem(TOKEN_KEY_PREFIX + STUDY_BASE);
     document.getElementById('patientToken').value = '';
     flipInner.classList.remove('flipped');
   });
