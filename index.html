@@ -328,13 +328,16 @@
   .code-history-item {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: flex-start;
     gap: 10px;
     padding: 8px 12px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 0.8rem;
+  }
+  .code-history-main {
+    min-width: 0;
   }
   .code-history-code-group {
     display: flex;
@@ -348,10 +351,19 @@
     letter-spacing: 0.06em;
     color: var(--text);
   }
+  .code-history-subject {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .code-history-meta {
     color: var(--muted);
     text-align: right;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .logout-link {
     display: block;
@@ -746,13 +758,25 @@
     }
   }
 
+  // Known device-vendor senders, matched against the email subject.
+  // Add more as new providers come on board.
+  const VENDOR_SUBJECT_MATCHERS = [
+    { label: 'Withings', pattern: /withings/i },
+    { label: 'OSA Guide', pattern: /osa[\s-]?guide/i }
+  ];
+
+  function vendorLabel(subject) {
+    const match = VENDOR_SUBJECT_MATCHERS.find((v) => v.pattern.test(subject || ''));
+    return match ? match.label : '';
+  }
+
   function showCode(result) {
     fetchBtn.disabled = false;
     fetchBtn.textContent = 'Fetch Device Code';
     statusLine.textContent = 'Code received.';
     codeValue.textContent = result.code;
     copyPrimaryBtn.dataset.code = result.code;
-    codeSubject.textContent = result.subject || '';
+    codeSubject.textContent = vendorLabel(result.subject);
 
     const ageMinutes = (Date.now() - new Date(result.receivedAt).getTime()) / 60000;
     const stale = ageMinutes >= HISTORY_AUTO_EXPAND_MINUTES;
@@ -776,15 +800,18 @@
     }
 
     codeHistory.innerHTML = others.map((m) => {
-      const subject = escapeHtml(m.subject || '');
+      const vendor = escapeHtml(vendorLabel(m.subject));
       const code = escapeHtml(m.code || '');
       const when = escapeHtml(relativeTime(m.receivedAt));
       return '<div class="code-history-item">' +
-        '<span class="code-history-code-group">' +
-          '<span class="code-history-code">' + code + '</span>' +
-          '<button type="button" class="copy-btn" data-code="' + code + '" aria-label="Copy code">' + COPY_ICON_SVG + '</button>' +
+        '<span class="code-history-main">' +
+          '<span class="code-history-code-group">' +
+            '<span class="code-history-code">' + code + '</span>' +
+            '<button type="button" class="copy-btn" data-code="' + code + '" aria-label="Copy code">' + COPY_ICON_SVG + '</button>' +
+          '</span>' +
+          (vendor ? '<div class="code-history-subject">' + vendor + '</div>' : '') +
         '</span>' +
-        '<span class="code-history-meta" title="' + subject + '">' + when + '</span>' +
+        '<span class="code-history-meta">' + when + '</span>' +
         '</div>';
     }).join('');
 
