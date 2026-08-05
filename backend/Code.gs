@@ -578,7 +578,7 @@ function handleFetchCode(token, base) {
     const subject = message.getSubject();
     const code = extractCode(message.getPlainBody()) || extractCode(subject);
     if (!code) continue;
-    matches.push({ code: code, subject: subject, receivedAt: message.getDate().toISOString() });
+    matches.push({ code: code, subject: subject, from: message.getFrom(), receivedAt: message.getDate().toISOString() });
   }
 
   if (matches.length === 0) {
@@ -592,13 +592,14 @@ function handleFetchCode(token, base) {
     allMessages[0].markRead();
   }
 
+  // Only the most recent match is ever surfaced to the frontend.
   const primary = matches[0];
   return {
     found: true,
     code: primary.code,
     subject: primary.subject,
-    receivedAt: primary.receivedAt,
-    messages: matches
+    from: primary.from,
+    receivedAt: primary.receivedAt
   };
 }
 

@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>StudyLink Portal</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f5d52">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="StudyLink">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -306,65 +312,6 @@
     color: var(--muted);
     word-break: break-word;
   }
-  .history-toggle {
-    background: none;
-    border: none;
-    width: auto;
-    padding: 0;
-    margin-top: 14px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--primary);
-    text-decoration: underline;
-    cursor: pointer;
-  }
-  .history-toggle:hover { color: var(--primary-dark); background: none; }
-  .code-history {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .code-history-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 8px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 0.8rem;
-  }
-  .code-history-main {
-    min-width: 0;
-  }
-  .code-history-code-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .code-history-code {
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.06em;
-    color: var(--text);
-  }
-  .code-history-subject {
-    margin-top: 2px;
-    color: var(--muted);
-    font-size: 0.72rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .code-history-meta {
-    color: var(--muted);
-    text-align: right;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
   .logout-link {
     display: block;
     text-align: center;
@@ -445,16 +392,8 @@
 </head>
 <body>
 
-  <!-- Shown while resolving the study, or if the ?base= link is missing/unknown -->
-  <div class="card" id="statusCard">
-    <div class="status-icon" id="statusIcon"><span class="spinner"></span></div>
-    <p class="eyebrow">StudyLink Portal</p>
-    <h1 id="statusHeading">Loading…</h1>
-    <p class="subtitle" id="statusMessage" aria-live="polite">One moment.</p>
-  </div>
-
   <!-- Login / code retrieval, as a horizontal flip card -->
-  <div class="flip-container hidden" id="flipContainer">
+  <div class="flip-container" id="flipContainer">
     <div class="flip-inner" id="flipInner">
 
       <!-- Login screen (front face) -->
@@ -462,6 +401,12 @@
         <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
         <h1>Sign in</h1>
         <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
+
+        <label for="studyBaseInput">Study</label>
+        <input type="text" id="studyBaseInput" list="studyBaseList" placeholder="e.g. samma.study" autocomplete="off" />
+        <datalist id="studyBaseList"></datalist>
+        <div class="error-msg" id="studyBaseError" role="alert"></div>
+
         <form id="loginForm">
           <label for="patientToken">Access Token</label>
           <input type="text" id="patientToken" placeholder="Enter your token" required autocomplete="off" />
@@ -492,9 +437,6 @@
             <div class="code-age" id="codeAge"></div>
           </div>
 
-          <button type="button" class="history-toggle hidden" id="historyToggle"></button>
-          <div class="code-history hidden" id="codeHistory"></div>
-
           <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
         </div>
 
@@ -522,6 +464,10 @@
   // from its own Script Properties. See backend/Code.gs.
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwiiGSyvZVQu3YsOCex7F7COPdEGtF26VEbgBn6jhNqsBMx2fxoNR5owNkuV1xASe0FwQ/exec';
 
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+  }
+
   let STUDY_NAME = null;
   let STUDY_BASE = null;
 
@@ -534,11 +480,6 @@
   let pollTimer = null;
   let pollAttempts = 0;
   let autoRecheckTimer = null;
-
-  const statusCard = document.getElementById('statusCard');
-  const statusIcon = document.getElementById('statusIcon');
-  const statusHeading = document.getElementById('statusHeading');
-  const statusMessage = document.getElementById('statusMessage');
 
   const flipContainer = document.getElementById('flipContainer');
   const flipInner = document.getElementById('flipInner');
@@ -556,55 +497,110 @@
   const copyPrimaryBtn = document.getElementById('copyPrimaryBtn');
   const codeSubject = document.getElementById('codeSubject');
   const codeAge = document.getElementById('codeAge');
-  const historyToggle = document.getElementById('historyToggle');
-  const codeHistory = document.getElementById('codeHistory');
   const logoutBtn = document.getElementById('logoutBtn');
 
-  const HISTORY_AUTO_EXPAND_MINUTES = 10;
+  const studyBaseInput = document.getElementById('studyBaseInput');
+  const studyBaseList = document.getElementById('studyBaseList');
+  const studyBaseError = document.getElementById('studyBaseError');
+  const patientTokenInput = document.getElementById('patientToken');
 
   // ── Study resolution ─────────────────────────────────────────────────
+  // A ?base= link param is the normal path. But an installed PWA opens at
+  // a bare start_url with no query string, so we also remember the last
+  // resolved study (and a short history of others) in localStorage and
+  // let the participant type/pick one directly above the token field.
+  const LAST_BASE_KEY = 'studylink_last_base';
+  const RECENT_STUDIES_KEY = 'studylink_recent_studies';
+  const MAX_RECENT_STUDIES = 6;
+
+  populateStudyDatalist();
   initStudy();
 
+  function getRecentStudies() {
+    try {
+      const raw = localStorage.getItem(RECENT_STUDIES_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function rememberStudy(base, name) {
+    const list = getRecentStudies().filter((s) => s.base !== base);
+    list.unshift({ base: base, name: name });
+    localStorage.setItem(RECENT_STUDIES_KEY, JSON.stringify(list.slice(0, MAX_RECENT_STUDIES)));
+    localStorage.setItem(LAST_BASE_KEY, base);
+    populateStudyDatalist();
+  }
+
+  function populateStudyDatalist() {
+    studyBaseList.innerHTML = getRecentStudies()
+      .map((s) => '<option value="' + escapeHtml(s.base) + '">' + escapeHtml(s.name) + '</option>')
+      .join('');
+  }
+
   async function initStudy() {
-    const base = new URLSearchParams(window.location.search).get('base');
+    const urlBase = new URLSearchParams(window.location.search).get('base');
+    const base = urlBase || localStorage.getItem(LAST_BASE_KEY) || '';
+    studyBaseInput.value = base;
+
     if (!base) {
-      showStudyError('Missing study link', 'This link is missing a study identifier. Please use the exact link your research team provided.');
+      setStudyResolved(false);
       return;
     }
+
+    await resolveStudy(base);
+
+    const prefillToken = new URLSearchParams(window.location.search).get('token');
+    if (prefillToken) {
+      patientTokenInput.value = prefillToken;
+    }
+  }
+
+  async function resolveStudy(base) {
     STUDY_BASE = base;
+    studyBaseError.textContent = '';
 
     let result;
     try {
       result = await callBackend('studyInfo', {});
     } catch (err) {
-      showStudyError('Could not reach the server', 'Please check your connection and reload the page.');
+      studyBaseError.textContent = 'Could not reach the server. Please check your connection.';
+      setStudyResolved(false);
       return;
     }
 
     if (!result.success) {
-      showStudyError('Study not found', 'This link doesn\'t match a known study. Please use the exact link your research team provided.');
+      studyBaseError.textContent = 'Unknown study. Please check the identifier your research team provided.';
+      setStudyResolved(false);
       return;
     }
 
     STUDY_NAME = result.name || 'StudyLink Portal';
     document.title = STUDY_NAME;
     document.getElementById('studyEyebrow').textContent = STUDY_NAME;
+    rememberStudy(base, STUDY_NAME);
+    setStudyResolved(true);
+  }
 
-    const prefillToken = new URLSearchParams(window.location.search).get('token');
-    if (prefillToken) {
-      document.getElementById('patientToken').value = prefillToken;
+  function setStudyResolved(resolved) {
+    patientTokenInput.disabled = !resolved;
+    loginBtn.disabled = !resolved;
+    if (!resolved) {
+      document.getElementById('studyEyebrow').textContent = 'StudyLink Portal';
+      document.title = 'StudyLink Portal';
     }
-
-    statusCard.classList.add('hidden');
-    flipContainer.classList.remove('hidden');
   }
 
-  function showStudyError(heading, message) {
-    statusIcon.className = 'status-icon warn';
-    statusIcon.textContent = '!';
-    statusHeading.textContent = heading;
-    statusMessage.textContent = message;
-  }
+  studyBaseInput.addEventListener('change', () => {
+    const base = studyBaseInput.value.trim();
+    if (base && base !== STUDY_BASE) {
+      resolveStudy(base);
+    } else if (!base) {
+      setStudyResolved(false);
+    }
+  });
 
   // Sending as text/plain avoids a CORS preflight against the Apps Script
   // endpoint (which cannot answer OPTIONS). The body is still JSON.
@@ -684,9 +680,6 @@
     codeDisplay.classList.remove('pulse');
     codeDisplay.classList.remove('stale');
     codeAge.textContent = '';
-    historyToggle.classList.add('hidden');
-    codeHistory.classList.add('hidden');
-    codeHistory.innerHTML = '';
   }
 
   function startPolling() {
@@ -758,76 +751,37 @@
     }
   }
 
-  // Known device-vendor senders, matched against the email subject.
-  // Add more as new providers come on board.
-  const VENDOR_SUBJECT_MATCHERS = [
+  // Known device-vendor senders, matched against the email subject and
+  // From address. Add more as new providers come on board.
+  const STALE_THRESHOLD_MINUTES = 10;
+  const VENDOR_MATCHERS = [
     { label: 'Withings', pattern: /withings/i },
     { label: 'OSA Guide', pattern: /osa[\s-]?guide/i }
   ];
 
-  function vendorLabel(subject) {
-    const match = VENDOR_SUBJECT_MATCHERS.find((v) => v.pattern.test(subject || ''));
+  function vendorLabel(subject, from) {
+    const haystack = (subject || '') + ' ' + (from || '');
+    const match = VENDOR_MATCHERS.find((v) => v.pattern.test(haystack));
     return match ? match.label : '';
   }
 
+  // Only the single most recent matching code is shown.
   function showCode(result) {
     fetchBtn.disabled = false;
     fetchBtn.textContent = 'Fetch Device Code';
     statusLine.textContent = 'Code received.';
     codeValue.textContent = result.code;
     copyPrimaryBtn.dataset.code = result.code;
-    codeSubject.textContent = vendorLabel(result.subject);
+    codeSubject.textContent = vendorLabel(result.subject, result.from);
 
     const ageMinutes = (Date.now() - new Date(result.receivedAt).getTime()) / 60000;
-    const stale = ageMinutes >= HISTORY_AUTO_EXPAND_MINUTES;
+    const stale = ageMinutes >= STALE_THRESHOLD_MINUTES;
     codeAge.textContent = stale ? 'Received ' + relativeTime(result.receivedAt) : '';
     codeDisplay.classList.toggle('stale', stale);
 
     codeDisplay.classList.remove('hidden');
     codeDisplay.classList.add('pulse');
-    renderHistory(result.messages || [], result.receivedAt);
   }
-
-  // Others besides the primary/most-recent code, which is already shown
-  // big above. Nothing to render when there's only one match.
-  function renderHistory(messages, primaryReceivedAt) {
-    const others = messages.slice(1);
-    if (others.length === 0) {
-      historyToggle.classList.add('hidden');
-      codeHistory.classList.add('hidden');
-      codeHistory.innerHTML = '';
-      return;
-    }
-
-    codeHistory.innerHTML = others.map((m) => {
-      const vendor = escapeHtml(vendorLabel(m.subject));
-      const code = escapeHtml(m.code || '');
-      const when = escapeHtml(relativeTime(m.receivedAt));
-      return '<div class="code-history-item">' +
-        '<span class="code-history-main">' +
-          '<span class="code-history-code-group">' +
-            '<span class="code-history-code">' + code + '</span>' +
-            '<button type="button" class="copy-btn" data-code="' + code + '" aria-label="Copy code">' + COPY_ICON_SVG + '</button>' +
-          '</span>' +
-          (vendor ? '<div class="code-history-subject">' + vendor + '</div>' : '') +
-        '</span>' +
-        '<span class="code-history-meta">' + when + '</span>' +
-        '</div>';
-    }).join('');
-
-    const primaryAgeMinutes = (Date.now() - new Date(primaryReceivedAt).getTime()) / 60000;
-    const autoExpand = primaryAgeMinutes < HISTORY_AUTO_EXPAND_MINUTES;
-
-    historyToggle.textContent = 'Show ' + others.length + ' earlier code' + (others.length > 1 ? 's' : '');
-    historyToggle.classList.remove('hidden');
-    codeHistory.classList.toggle('hidden', !autoExpand);
-    historyToggle.classList.toggle('hidden', autoExpand);
-  }
-
-  historyToggle.addEventListener('click', () => {
-    codeHistory.classList.remove('hidden');
-    historyToggle.classList.add('hidden');
-  });
 
   // ── Copy to clipboard ────────────────────────────────────────────────
   const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -838,12 +792,6 @@
 
   copyPrimaryBtn.innerHTML = COPY_ICON_SVG;
   copyPrimaryBtn.addEventListener('click', () => copyCode(copyPrimaryBtn, copyPrimaryBtn.dataset.code));
-
-  // Delegated: history items are re-rendered wholesale on every code fetch.
-  codeHistory.addEventListener('click', (e) => {
-    const btn = e.target.closest('.copy-btn');
-    if (btn) copyCode(btn, btn.dataset.code);
-  });
 
   async function copyCode(button, code) {
     if (!code) return;
