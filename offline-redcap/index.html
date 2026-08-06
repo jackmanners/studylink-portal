@@ -283,9 +283,33 @@
     font-size: 0.78rem;
     color: var(--muted);
   }
+  .home-link {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--muted);
+    opacity: 0.45;
+    text-decoration: none;
+    transition: opacity 0.15s, background 0.15s;
+    z-index: 30;
+  }
+  .home-link:hover { opacity: 1; background: var(--bg); }
+  .home-link svg { width: 18px; height: 18px; }
 </style>
 </head>
 <body>
+<a class="home-link" href="../" aria-label="All study apps" title="All study apps">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 9.5 12 3l9 6.5"></path>
+    <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path>
+  </svg>
+</a>
 <div class="wrap">
   <p class="eyebrow">StudyLink Portal, Offline Backup</p>
   <h1>Offline survey generator</h1>

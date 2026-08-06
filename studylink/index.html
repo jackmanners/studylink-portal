@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudyLink Portal</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f5d52">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="StudyLink">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2ebdd;
+    --card-bg: #fffdf8;
+    --text: #332a1f;
+    --muted: #8c8071;
+    --primary: #2f5d52;
+    --primary-dark: #21453c;
+    --success: #4d7c5f;
+    --error: #b0503a;
+    --border: #e5dcc6;
+    --radius: 10px;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Public Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    background: var(--bg);
+    font-family: var(--font-body);
+    color: var(--text);
+    padding: 20px;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(64, 48, 24, 0.08);
+    padding: 34px 30px;
+  }
+  .flip-container {
+    width: 100%;
+    max-width: 420px;
+    perspective: 1400px;
+  }
+  .flip-inner {
+    position: relative;
+    width: 100%;
+    display: grid;
+    transform-style: preserve-3d;
+    transition: transform 0.7s cubic-bezier(0.4, 0.15, 0.2, 1);
+  }
+  .flip-inner.flipped {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    grid-area: 1 / 1;
+    width: 100%;
+    align-self: start;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-face-back {
+    transform: rotateY(180deg);
+  }
+  .eyebrow {
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 1.65rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+  p.subtitle {
+    margin: 0 0 26px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  input[type="text"],
+  input[type="tel"],
+  input[type="number"] {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 1rem;
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    outline: none;
+    letter-spacing: 0.02em;
+    transition: border-color 0.15s;
+  }
+  input:focus {
+    border-color: var(--primary);
+  }
+  input::placeholder {
+    color: #b3a892;
+    letter-spacing: normal;
+  }
+  button {
+    width: 100%;
+    padding: 12px 16px;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fdfaf3;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  button:hover:not(:disabled) { background: var(--primary-dark); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .hidden { display: none !important; }
+  .error-msg {
+    color: var(--error);
+    font-size: 0.85rem;
+    margin: -8px 0 16px;
+    min-height: 1em;
+  }
+  /* Plain spinner — used everywhere except the login button, which gets
+     the more elaborate breathing-dots .loader below. */
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid rgba(0, 0, 0, 0.12);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 10px;
+  }
+  .loader span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+  .loader span:nth-child(1) { animation: dot-breathe-0 1.7s ease-in-out infinite; }
+  .loader span:nth-child(2) { animation: dot-breathe-1 1.7s ease-in-out infinite; }
+  .loader span:nth-child(3) { animation: dot-breathe-2 1.7s ease-in-out infinite; }
+  .loader span:nth-child(4) { animation: dot-breathe-3 1.7s ease-in-out infinite; }
+  .loader span:nth-child(5) { animation: dot-breathe-4 1.7s ease-in-out infinite; }
+  /* Each dot grows on the way left→right, then the rightmost dot shrinks
+     first and the leftmost last, so the "lit" region visibly contracts
+     right→left — a breathing sweep rather than five dots pulsing in place. */
+  @keyframes dot-breathe-0 {
+    0% { transform: scale(0.4); opacity: 0.4; }
+    10%, 90% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-1 {
+    0%, 10% { transform: scale(0.4); opacity: 0.4; }
+    20%, 80% { transform: scale(1); opacity: 1; }
+    90%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-2 {
+    0%, 20% { transform: scale(0.4); opacity: 0.4; }
+    30%, 70% { transform: scale(1); opacity: 1; }
+    80%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-3 {
+    0%, 30% { transform: scale(0.4); opacity: 0.4; }
+    40%, 60% { transform: scale(1); opacity: 1; }
+    70%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+  @keyframes dot-breathe-4 {
+    0%, 40% { transform: scale(0.4); opacity: 0.4; }
+    50% { transform: scale(1); opacity: 1; }
+    60%, 100% { transform: scale(0.4); opacity: 0.4; }
+  }
+
+  .participant-badge {
+    display: inline-block;
+    max-width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--primary-dark);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    margin-bottom: 20px;
+    overflow-wrap: anywhere;
+  }
+  .status-line {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-top: 14px;
+    min-height: 1.2em;
+  }
+  .code-display {
+    text-align: center;
+    padding: 26px 10px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    margin-top: 18px;
+    transition: background 0.3s, border-color 0.3s, padding 0.3s;
+  }
+  .code-display.pulse {
+    animation: pulseIn 0.5s ease;
+  }
+  @keyframes pulseIn {
+    0% { transform: scale(0.96); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .code-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .code-value {
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.1em;
+    color: var(--primary);
+    transition: font-size 0.3s, color 0.3s;
+  }
+  .copy-btn {
+    flex: none;
+    width: auto;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .copy-btn:hover { background: none; color: var(--primary); }
+  .copy-btn svg { width: 16px; height: 16px; display: block; }
+  .copy-btn.copied { color: var(--success); }
+  .code-value-row .copy-btn svg { width: 20px; height: 20px; }
+  /* Only match found, but stale — de-emphasize instead of announcing it
+     like a fresh code, since it likely isn't what the participant needs. */
+  .code-display.stale {
+    padding: 16px 10px;
+    background: transparent;
+  }
+  .code-display.stale .code-value {
+    font-size: 1.5rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .code-age {
+    display: none;
+    margin-top: 6px;
+    font-size: 0.74rem;
+    color: var(--muted);
+  }
+  .code-display.stale .code-age {
+    display: block;
+  }
+  .code-subject {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    word-break: break-word;
+  }
+  .logout-link {
+    display: block;
+    text-align: center;
+    margin-top: 18px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: auto;
+    padding: 0;
+  }
+  .logout-link:hover { color: var(--text); background: none; }
+
+  .status-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    background: var(--bg);
+  }
+  .status-icon.warn {
+    background: #f3e0d8;
+    color: var(--error);
+    font-family: var(--font-display);
+    font-weight: 700;
+  }
+
+  .health-check-trigger {
+    margin-top: 10px;
+  }
+  .health-check-item {
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .health-check-item:last-child { border-bottom: none; }
+  .health-check-mark {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .health-check-mark.ok { background: var(--success); }
+  .health-check-mark.fail { background: var(--error); }
+  .health-check-detail {
+    margin-top: 2px;
+    font-size: 0.74rem;
+    color: var(--muted);
+    word-break: break-word;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+    max-width: 420px;
+  }
+  footer a {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+  footer a:hover { color: var(--primary-dark); }
+
+  .scan-qr-btn {
+    background: var(--bg);
+    color: var(--primary);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .scan-qr-btn:hover:not(:disabled) { background: var(--border); }
+  .scan-qr-btn svg { width: 18px; height: 18px; }
+
+  .qr-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 1000;
+  }
+  .qr-overlay video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .qr-frame {
+    position: relative;
+    width: min(70vw, 280px);
+    height: min(70vw, 280px);
+    border: 3px solid #fdfaf3;
+    border-radius: 16px;
+    box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.45);
+  }
+  .qr-overlay-msg {
+    position: relative;
+    color: #fdfaf3;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 0 20px;
+    max-width: 340px;
+  }
+  .qr-cancel-btn {
+    position: relative;
+    width: auto;
+    padding: 10px 28px;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .qr-cancel-btn:hover { background: rgba(255, 255, 255, 0.25); }
+
+  .home-link {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--muted);
+    opacity: 0.45;
+    text-decoration: none;
+    transition: opacity 0.15s, background 0.15s;
+    z-index: 30;
+  }
+  .home-link:hover { opacity: 1; background: var(--bg); }
+  .home-link svg { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+
+  <a class="home-link" href="../" aria-label="All study apps" title="All study apps">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9.5 12 3l9 6.5"></path>
+      <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path>
+    </svg>
+  </a>
+
+  <!-- Login / code retrieval, as a horizontal flip card -->
+  <div class="flip-container" id="flipContainer">
+    <div class="flip-inner" id="flipInner">
+
+      <!-- Login screen (front face) -->
+      <div class="card flip-face" id="loginCard">
+        <p class="eyebrow" id="studyEyebrow">StudyLink Portal</p>
+        <h1>Sign in</h1>
+        <p class="subtitle">Enter your access token to retrieve your device verification code.</p>
+
+        <button type="button" class="scan-qr-btn" id="scanQrBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+            <rect x="7" y="7" width="4" height="4"></rect><rect x="13" y="7" width="4" height="4"></rect>
+            <rect x="7" y="13" width="4" height="4"></rect><line x1="15" y1="15" x2="15" y2="15.01"></line>
+            <line x1="18" y1="13" x2="18" y2="17"></line>
+          </svg>
+          Scan QR code
+        </button>
+
+        <label for="studyBaseInput">Study</label>
+        <input type="text" id="studyBaseInput" list="studyBaseList" placeholder="e.g. samma.study" autocomplete="off" />
+        <datalist id="studyBaseList"></datalist>
+        <div class="error-msg" id="studyBaseError" role="alert"></div>
+
+        <form id="loginForm">
+          <label for="patientToken">Access Token</label>
+          <input type="text" id="patientToken" placeholder="Enter your token" required autocomplete="off" />
+          <div class="error-msg" id="loginError" role="alert"></div>
+          <button type="submit" id="loginBtn">
+            <span id="loginBtnText">Continue</span>
+          </button>
+        </form>
+        <button type="button" class="logout-link health-check-trigger" id="healthCheckBtn">Check system status</button>
+      </div>
+
+      <!-- Back face: code retrieval screen, or system-status panel -->
+      <div class="card flip-face flip-face-back" id="backFace">
+        <div id="codeCard">
+          <div class="participant-badge" id="participantBadge"></div>
+          <h1 id="codeHeading">Looking for your code</h1>
+          <p class="subtitle">We're watching your device's inbox — this updates automatically.</p>
+
+          <button id="fetchBtn">Waiting for code…</button>
+          <div class="status-line" id="statusLine" aria-live="polite"></div>
+
+          <div class="code-display hidden" id="codeDisplay">
+            <div class="code-value-row">
+              <div class="code-value" id="codeValue"></div>
+              <button type="button" class="copy-btn" id="copyPrimaryBtn" aria-label="Copy code"></button>
+            </div>
+            <div class="code-subject" id="codeSubject"></div>
+            <div class="code-age" id="codeAge"></div>
+          </div>
+
+          <button type="button" class="logout-link" id="logoutBtn">Sign out</button>
+        </div>
+
+        <div id="healthCard" class="hidden">
+          <p class="eyebrow">StudyLink Portal</p>
+          <h1>System status</h1>
+          <p class="subtitle">Checks the backend's config, REDCap connectivity, and Gmail access.</p>
+          <div id="healthResults" aria-live="polite"></div>
+          <button type="button" class="logout-link health-check-trigger" id="healthBackBtn">Back to sign in</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>
+    Need help? Contact <a href="mailto:jack.manners@flinders.edu.au">Jack Manners</a> at Flinders University.
+  </footer>
+
+  <!-- Camera overlay for in-app QR scanning -->
+  <div class="qr-overlay hidden" id="qrOverlay">
+    <video id="qrVideo" autoplay playsinline muted></video>
+    <div class="qr-frame"></div>
+    <p class="qr-overlay-msg" id="qrOverlayMsg">Point your camera at the QR code.</p>
+    <button type="button" class="qr-cancel-btn" id="qrCancelBtn">Cancel</button>
+  </div>
+
+<script>
+  // ── Configuration ────────────────────────────────────────────────────
+  // This site talks to one Apps Script deployment. Which study a visitor
+  // hits is picked by a `?base=value` query param — the backend resolves
+  // everything else (REDCap config, display name, dedicated vs forwarded)
+  // from its own Script Properties. See backend/Code.gs.
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwiiGSyvZVQu3YsOCex7F7COPdEGtF26VEbgBn6jhNqsBMx2fxoNR5owNkuV1xASe0FwQ/exec';
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+  }
+
+  let STUDY_NAME = null;
+  let STUDY_BASE = null;
+
+  const POLL_INTERVAL_MS = 5000;
+  const MAX_POLL_ATTEMPTS = 24; // 24 * 5s = 120s
+  const AUTO_RECHECK_MS = 30000; // re-run the fetch cycle this often while idle
+
+  // ── State ────────────────────────────────────────────────────────────
+  let currentToken = null;
+  let pollTimer = null;
+  let pollAttempts = 0;
+  let autoRecheckTimer = null;
+
+  const flipContainer = document.getElementById('flipContainer');
+  const flipInner = document.getElementById('flipInner');
+
+  const loginForm = document.getElementById('loginForm');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginBtnText = document.getElementById('loginBtnText');
+  const loginError = document.getElementById('loginError');
+
+  const participantBadge = document.getElementById('participantBadge');
+  const fetchBtn = document.getElementById('fetchBtn');
+  const statusLine = document.getElementById('statusLine');
+  const codeDisplay = document.getElementById('codeDisplay');
+  const codeValue = document.getElementById('codeValue');
+  const copyPrimaryBtn = document.getElementById('copyPrimaryBtn');
+  const codeSubject = document.getElementById('codeSubject');
+  const codeAge = document.getElementById('codeAge');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  const studyBaseInput = document.getElementById('studyBaseInput');
+  const studyBaseList = document.getElementById('studyBaseList');
+  const studyBaseError = document.getElementById('studyBaseError');
+  const patientTokenInput = document.getElementById('patientToken');
+
+  // ── Study resolution ─────────────────────────────────────────────────
+  // A ?base= link param is the normal path. But an installed PWA opens at
+  // a bare start_url with no query string, so we also remember the last
+  // resolved study (and a short history of others) in localStorage and
+  // let the participant type/pick one directly above the token field.
+  const LAST_BASE_KEY = 'studylink_last_base';
+  const RECENT_STUDIES_KEY = 'studylink_recent_studies';
+  const MAX_RECENT_STUDIES = 6;
+  // Remembered per study so the token survives a reopen — iOS in
+  // particular can clear a PWA's localStorage after enough inactivity, so
+  // this is a convenience, not a guarantee; falling back to re-entering
+  // the token (or rescanning the QR code) always still works.
+  const TOKEN_KEY_PREFIX = 'studylink_token_';
+
+  populateStudyDatalist();
+  initStudy();
+
+  function getRecentStudies() {
+    try {
+      const raw = localStorage.getItem(RECENT_STUDIES_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function rememberStudy(base, name) {
+    const list = getRecentStudies().filter((s) => s.base !== base);
+    list.unshift({ base: base, name: name });
+    localStorage.setItem(RECENT_STUDIES_KEY, JSON.stringify(list.slice(0, MAX_RECENT_STUDIES)));
+    localStorage.setItem(LAST_BASE_KEY, base);
+    populateStudyDatalist();
+  }
+
+  function populateStudyDatalist() {
+    studyBaseList.innerHTML = getRecentStudies()
+      .map((s) => '<option value="' + escapeHtml(s.base) + '">' + escapeHtml(s.name) + '</option>')
+      .join('');
+  }
+
+  async function initStudy() {
+    const urlBase = new URLSearchParams(window.location.search).get('base');
+    const base = urlBase || localStorage.getItem(LAST_BASE_KEY) || '';
+    studyBaseInput.value = base;
+
+    if (!base) {
+      setStudyResolved(false);
+      return;
+    }
+
+    await resolveStudy(base);
+
+    const prefillToken = new URLSearchParams(window.location.search).get('token');
+    if (prefillToken) {
+      patientTokenInput.value = prefillToken;
+    }
+  }
+
+  async function resolveStudy(base) {
+    STUDY_BASE = base;
+    studyBaseError.textContent = '';
+
+    let result;
+    try {
+      result = await callBackend('studyInfo', {});
+    } catch (err) {
+      studyBaseError.textContent = 'Could not reach the server. Please check your connection.';
+      setStudyResolved(false);
+      return;
+    }
+
+    if (!result.success) {
+      studyBaseError.textContent = 'Unknown study. Please check the identifier your research team provided.';
+      setStudyResolved(false);
+      return;
+    }
+
+    STUDY_NAME = result.name || 'StudyLink Portal';
+    document.title = STUDY_NAME;
+    document.getElementById('studyEyebrow').textContent = STUDY_NAME;
+    rememberStudy(base, STUDY_NAME);
+    setStudyResolved(true);
+
+    if (!patientTokenInput.value) {
+      const rememberedToken = localStorage.getItem(TOKEN_KEY_PREFIX + base);
+      if (rememberedToken) {
+        patientTokenInput.value = rememberedToken;
+      }
+    }
+  }
+
+  function setStudyResolved(resolved) {
+    patientTokenInput.disabled = !resolved;
+    loginBtn.disabled = !resolved;
+    if (!resolved) {
+      document.getElementById('studyEyebrow').textContent = 'StudyLink Portal';
+      document.title = 'StudyLink Portal';
+    }
+  }
+
+  studyBaseInput.addEventListener('change', () => {
+    const base = studyBaseInput.value.trim();
+    if (base && base !== STUDY_BASE) {
+      resolveStudy(base);
+    } else if (!base) {
+      setStudyResolved(false);
+    }
+  });
+
+  // ── QR scanning ──────────────────────────────────────────────────────
+  // Reads the participant's link (?base=&token=) straight out of a QR
+  // code's own decoded text, without navigating — works the same whether
+  // this is running as an installed PWA or a plain browser tab, since
+  // scanning with the OS camera app can't be relied on to reopen the PWA.
+  const scanQrBtn = document.getElementById('scanQrBtn');
+  const qrOverlay = document.getElementById('qrOverlay');
+  const qrVideo = document.getElementById('qrVideo');
+  const qrOverlayMsg = document.getElementById('qrOverlayMsg');
+  const qrCancelBtn = document.getElementById('qrCancelBtn');
+
+  let qrStream = null;
+  let qrScanning = false;
+
+  if (!('BarcodeDetector' in window)) {
+    scanQrBtn.classList.add('hidden');
+  }
+
+  scanQrBtn.addEventListener('click', startQrScan);
+  qrCancelBtn.addEventListener('click', stopQrScan);
+
+  async function startQrScan() {
+    qrOverlayMsg.textContent = 'Point your camera at the QR code.';
+    qrOverlay.classList.remove('hidden');
+
+    try {
+      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch (err) {
+      qrOverlayMsg.textContent = 'Could not access the camera. Please allow camera access and try again.';
+      return;
+    }
+
+    qrVideo.srcObject = qrStream;
+    await qrVideo.play();
+
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    qrScanning = true;
+    scanQrFrame(detector);
+  }
+
+  async function scanQrFrame(detector) {
+    if (!qrScanning) return;
+    try {
+      const codes = await detector.detect(qrVideo);
+      if (codes.length > 0) {
+        handleQrResult(codes[0].rawValue);
+        return;
+      }
+    } catch (err) {
+      // Transient decode errors (e.g. a frame mid-focus-change) are ignored.
+    }
+    requestAnimationFrame(() => scanQrFrame(detector));
+  }
+
+  function stopQrScan() {
+    qrScanning = false;
+    if (qrStream) {
+      qrStream.getTracks().forEach((track) => track.stop());
+      qrStream = null;
+    }
+    qrVideo.srcObject = null;
+    qrOverlay.classList.add('hidden');
+  }
+
+  function handleQrResult(rawValue) {
+    let url;
+    try {
+      url = new URL(rawValue);
+    } catch (err) {
+      qrOverlayMsg.textContent = 'That QR code doesn\'t contain a valid link. Please try again.';
+      return;
+    }
+
+    const base = url.searchParams.get('base');
+    const token = url.searchParams.get('token');
+    stopQrScan();
+
+    if (!base) {
+      studyBaseError.textContent = 'That QR code is missing a study identifier.';
+      return;
+    }
+
+    studyBaseInput.value = base;
+    resolveStudy(base);
+    if (token) {
+      patientTokenInput.value = token;
+    }
+  }
+
+  // Sending as text/plain avoids a CORS preflight against the Apps Script
+  // endpoint (which cannot answer OPTIONS). The body is still JSON.
+  // `base` is always included so a shared hub deployment (serving
+  // multiple forwarded-mail studies from one Apps Script) knows which
+  // study's config to use — a dedicated single-study deployment just
+  // ignores it.
+  async function callBackend(action, extra) {
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action, base: STUDY_BASE }, extra))
+    });
+    if (!response.ok) {
+      throw new Error('Network error (' + response.status + ')');
+    }
+    return response.json();
+  }
+
+  // ── Login ────────────────────────────────────────────────────────────
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = document.getElementById('patientToken').value.trim();
+    if (!token) return;
+
+    loginError.textContent = '';
+    setLoginLoading(true);
+
+    try {
+      const result = await callBackend('verify', { token: token });
+      if (result.success) {
+        currentToken = token;
+        localStorage.setItem(TOKEN_KEY_PREFIX + STUDY_BASE, token);
+        showCodeScreen(result.address);
+      } else {
+        loginError.textContent = result.error || 'Verification failed.';
+      }
+    } catch (err) {
+      loginError.textContent = 'Could not reach the server. Please try again.';
+    } finally {
+      setLoginLoading(false);
+    }
+  });
+
+  function setLoginLoading(isLoading) {
+    loginBtn.disabled = isLoading;
+    loginBtnText.textContent = isLoading ? '' : 'Continue';
+    if (isLoading) {
+      loginBtn.innerHTML = '<span class="loader"><span></span><span></span><span></span><span></span><span></span></span>';
+    } else {
+      loginBtn.innerHTML = '<span id="loginBtnText">Continue</span>';
+    }
+  }
+
+  function showCodeScreen(address) {
+    participantBadge.textContent = address || 'Signed in';
+    flipInner.classList.add('flipped');
+    startPolling();
+  }
+
+  logoutBtn.addEventListener('click', () => {
+    resetCodeScreen();
+    clearAutoRecheck();
+    currentToken = null;
+    localStorage.removeItem(TOKEN_KEY_PREFIX + STUDY_BASE);
+    document.getElementById('patientToken').value = '';
+    flipInner.classList.remove('flipped');
+  });
+
+  // ── Code fetch + polling ─────────────────────────────────────────────
+  fetchBtn.addEventListener('click', startPolling);
+
+  function resetCodeScreen() {
+    stopPolling();
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Fetch Device Code';
+    statusLine.textContent = '';
+    codeDisplay.classList.add('hidden');
+    codeDisplay.classList.remove('pulse');
+    codeDisplay.classList.remove('stale');
+    codeAge.textContent = '';
+  }
+
+  function startPolling() {
+    // Every call to startPolling — manual click, initial login, or an
+    // auto-recheck firing — resets the 30s auto-recheck clock from here.
+    scheduleAutoRecheck();
+    pollAttempts = 0;
+    fetchBtn.disabled = true;
+    codeDisplay.classList.add('hidden');
+    fetchBtn.textContent = 'Waiting for code...';
+    pollOnce();
+    pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // Re-runs the same check as a manual "Fetch Device Code" press, every
+  // AUTO_RECHECK_MS, as long as this screen stays open. Skips a tick if a
+  // fetch cycle is still actively running (pollTimer set) rather than
+  // interrupting it. Resets (not just continues) on every startPolling()
+  // call, so a manual press pushes the next auto-recheck 30s further out.
+  function scheduleAutoRecheck() {
+    if (autoRecheckTimer) clearInterval(autoRecheckTimer);
+    autoRecheckTimer = setInterval(() => {
+      if (!pollTimer) startPolling();
+    }, AUTO_RECHECK_MS);
+  }
+
+  function clearAutoRecheck() {
+    if (autoRecheckTimer) {
+      clearInterval(autoRecheckTimer);
+      autoRecheckTimer = null;
+    }
+  }
+
+  async function pollOnce() {
+    pollAttempts++;
+    const secondsLeft = Math.max(0, (MAX_POLL_ATTEMPTS - pollAttempts) * (POLL_INTERVAL_MS / 1000));
+    statusLine.textContent = 'Checking for code... (' + secondsLeft + 's remaining)';
+
+    try {
+      const result = await callBackend('fetchCode', { token: currentToken });
+      if (result.found && result.code) {
+        stopPolling();
+        showCode(result);
+        return;
+      }
+      if (result.error) {
+        stopPolling();
+        statusLine.textContent = result.error;
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Fetch Device Code';
+        return;
+      }
+    } catch (err) {
+      // Transient network errors are ignored; polling continues until timeout.
+    }
+
+    if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+      stopPolling();
+      statusLine.textContent = 'No code received within 2 minutes. Please try again.';
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = 'Fetch Device Code';
+    }
+  }
+
+  // Known device-vendor senders, matched against the email subject and
+  // From address. Add more as new providers come on board.
+  const STALE_THRESHOLD_MINUTES = 10;
+  const VENDOR_MATCHERS = [
+    { label: 'Withings', pattern: /withings/i },
+    { label: 'OSA Guide', pattern: /osa[\s-]?guide/i }
+  ];
+
+  function vendorLabel(subject, from) {
+    const haystack = (subject || '') + ' ' + (from || '');
+    const match = VENDOR_MATCHERS.find((v) => v.pattern.test(haystack));
+    return match ? match.label : '';
+  }
+
+  // Only the single most recent matching code is shown.
+  function showCode(result) {
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Fetch Device Code';
+    statusLine.textContent = 'Code received.';
+    codeValue.textContent = result.code;
+    copyPrimaryBtn.dataset.code = result.code;
+    codeSubject.textContent = vendorLabel(result.subject, result.from);
+
+    const ageMinutes = (Date.now() - new Date(result.receivedAt).getTime()) / 60000;
+    const stale = ageMinutes >= STALE_THRESHOLD_MINUTES;
+    codeAge.textContent = stale ? 'Received ' + relativeTime(result.receivedAt) : '';
+    codeDisplay.classList.toggle('stale', stale);
+
+    codeDisplay.classList.remove('hidden');
+    codeDisplay.classList.add('pulse');
+  }
+
+  // ── Copy to clipboard ────────────────────────────────────────────────
+  const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+  const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+  copyPrimaryBtn.innerHTML = COPY_ICON_SVG;
+  copyPrimaryBtn.addEventListener('click', () => copyCode(copyPrimaryBtn, copyPrimaryBtn.dataset.code));
+
+  async function copyCode(button, code) {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch (err) {
+      // Clipboard API needs a secure context/permission; fall back to a
+      // hidden textarea + execCommand for older or restricted browsers.
+      const textarea = document.createElement('textarea');
+      textarea.value = code;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try { document.execCommand('copy'); } catch (err2) { /* give up quietly */ }
+      document.body.removeChild(textarea);
+    }
+    const original = button.innerHTML;
+    button.innerHTML = CHECK_ICON_SVG;
+    button.classList.add('copied');
+    setTimeout(() => {
+      button.innerHTML = original;
+      button.classList.remove('copied');
+    }, 1500);
+  }
+
+  function relativeTime(isoString) {
+    const minutes = Math.max(0, Math.round((Date.now() - new Date(isoString).getTime()) / 60000));
+    if (minutes < 1) return 'just now';
+    if (minutes === 1) return '1 min ago';
+    if (minutes < 60) return minutes + ' min ago';
+    const hours = Math.round(minutes / 60);
+    return hours === 1 ? '1 hr ago' : hours + ' hrs ago';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ── System status (health check) ─────────────────────────────────────
+  const healthCheckBtn = document.getElementById('healthCheckBtn');
+  const healthBackBtn = document.getElementById('healthBackBtn');
+  const healthCard = document.getElementById('healthCard');
+  const healthResults = document.getElementById('healthResults');
+  const codeCardPanel = document.getElementById('codeCard');
+
+  healthCheckBtn.addEventListener('click', async () => {
+    codeCardPanel.classList.add('hidden');
+    healthCard.classList.remove('hidden');
+    healthResults.innerHTML = '<span class="spinner"></span>';
+    flipInner.classList.add('flipped');
+
+    try {
+      const result = await callBackend('healthCheck', {});
+      renderHealthResults(result.checks || []);
+    } catch (err) {
+      healthResults.innerHTML = '<p class="subtitle">Could not reach the server.</p>';
+    }
+  });
+
+  healthBackBtn.addEventListener('click', () => {
+    flipInner.classList.remove('flipped');
+    healthCard.classList.add('hidden');
+    codeCardPanel.classList.remove('hidden');
+  });
+
+  function renderHealthResults(checks) {
+    if (checks.length === 0) {
+      healthResults.innerHTML = '<p class="subtitle">No results returned.</p>';
+      return;
+    }
+    healthResults.innerHTML = checks.map((c) => {
+      const mark = c.ok ? '<span class="health-check-mark ok">✓</span>' : '<span class="health-check-mark fail">✕</span>';
+      const detail = c.detail ? '<div class="health-check-detail">' + escapeHtml(c.detail) + '</div>' : '';
+      return '<div class="health-check-item">' + mark +
+        '<div><div>' + escapeHtml(c.label) + '</div>' + detail + '</div></div>';
+    }).join('');
+  }
+</script>
+</body>
+</html>
