@@ -19,6 +19,17 @@
   var byName = {};
   DATA.fields.forEach(function (f) { byName[f.n] = f; });
 
+  // Fields referenced as {field_name} inside another field's label/note are
+  // rendered as a live input at that point (REDCap "embedded fields"), and
+  // are not shown a second time at their normal position on the form.
+  var embeddedNames = {};
+  DATA.fields.forEach(function (f) {
+    var text = (f.l || '') + ' ' + (f.note || '');
+    (text.match(/\{([a-zA-Z0-9_]+)\}/g) || []).forEach(function (tok) {
+      embeddedNames[tok.slice(1, -1)] = true;
+    });
+  });
+
   DATA.fields.forEach(function (f) {
     f._test = compileLogic(f.br);
     f._calcText = /@CALCTEXT\s*\(/i.test(f.ann || '');
@@ -473,6 +484,7 @@
     var lastSection = null;
     while (i < fields.length) {
       var f = fields[i];
+      if (embeddedNames[f.n]) { i++; continue; }
       if (f.s && f.s !== lastSection) {
         panel.appendChild(el('div', 'section-header', f.s));
         lastSection = f.s;
@@ -579,11 +591,107 @@
     return String(v);
   }
 
+  // [field] is piping (shows the value as text). {field} is REDCap's
+  // "embedded field" syntax: it splices in an actual live input control at
+  // that spot instead. The two can't share the same reactive-refresh path,
+  // since re-running pipeText would tear down and rebuild the embedded
+  // inputs (losing focus) on every keystroke elsewhere on the form.
   function setRichText(el2, html) {
     var clean = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
-    if (/\[[a-zA-Z0-9_]+\]/.test(clean)) el2.dataset.pipeTemplate = clean;
+    var hasEmbeds = /\{[a-zA-Z0-9_]+\}/.test(clean);
     var rec = store.records[currentRecordId];
-    el2.innerHTML = pipeText(clean, currentEventValuesSnapshot(), rec);
+    var piped = pipeText(clean, currentEventValuesSnapshot(), rec);
+    if (!hasEmbeds && /\[[a-zA-Z0-9_]+\]/.test(clean)) el2.dataset.pipeTemplate = clean;
+    el2.innerHTML = piped;
+    if (hasEmbeds) embedFields(el2);
+  }
+
+  // Walks el2's text nodes and swaps any {field_name} token for a live
+  // input control, leaving surrounding HTML (e.g. a table layout) intact.
+  function embedFields(el2) {
+    var walker = document.createTreeWalker(el2, NodeFilter.SHOW_TEXT, null);
+    var textNodes = [];
+    var node;
+    while ((node = walker.nextNode())) {
+      if (/\{[a-zA-Z0-9_]+\}/.test(node.nodeValue)) textNodes.push(node);
+    }
+    textNodes.forEach(function (tn) {
+      var parts = tn.nodeValue.split(/(\{[a-zA-Z0-9_]+\})/g);
+      if (parts.length <= 1) return;
+      var frag = document.createDocumentFragment();
+      parts.forEach(function (part) {
+        var m = /^\{([a-zA-Z0-9_]+)\}$/.exec(part);
+        if (m && byName[m[1]]) frag.appendChild(renderEmbeddedInput(byName[m[1]]));
+        else if (part) frag.appendChild(document.createTextNode(part));
+      });
+      tn.parentNode.replaceChild(frag, tn);
+    });
+  }
+
+  // Compact bound input for a field embedded inline in another field's text.
+  function renderEmbeddedInput(f) {
+    var wrap = document.createElement('span');
+    wrap.className = 'embedded-input';
+    wrap.dataset.field = f.n;
+    if (!fieldVisible(f)) wrap.style.display = 'none';
+    var current = getVal(f);
+    function commit(v) { setVal(f, v); updateLiveState(); }
+
+    if (f.t === 'yesno' || f.t === 'truefalse') {
+      var yn = f.t === 'yesno' ? [['1', 'Yes'], ['0', 'No']] : [['1', 'True'], ['0', 'False']];
+      yn.forEach(function (p) {
+        var lbl = el('label', 'choice-opt embedded-opt');
+        var input = document.createElement('input');
+        input.type = 'radio'; input.name = 'em_' + f.n; input.value = p[0];
+        input.checked = current === p[0];
+        input.addEventListener('change', function () { commit(p[0]); });
+        lbl.appendChild(input); lbl.appendChild(document.createTextNode(p[1]));
+        wrap.appendChild(lbl);
+      });
+    } else if (f.t === 'dropdown') {
+      var sel = document.createElement('select');
+      sel.className = 'embedded-select';
+      sel.appendChild(new Option('-- select --', ''));
+      f.ch.forEach(function (p) { var o = new Option(p[1], p[0]); if (current === p[0]) o.selected = true; sel.appendChild(o); });
+      sel.addEventListener('change', function () { commit(sel.value); });
+      wrap.appendChild(sel);
+    } else if (f.t === 'radio') {
+      f.ch.forEach(function (p) {
+        var lbl = el('label', 'choice-opt embedded-opt');
+        var input = document.createElement('input');
+        input.type = 'radio'; input.name = 'em_' + f.n; input.value = p[0];
+        input.checked = current === p[0];
+        input.addEventListener('change', function () { commit(p[0]); });
+        lbl.appendChild(input); lbl.appendChild(document.createTextNode(p[1]));
+        wrap.appendChild(lbl);
+      });
+    } else if (f.t === 'checkbox') {
+      f.ch.forEach(function (p) {
+        var lbl = el('label', 'choice-opt embedded-opt');
+        var input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = !!(current && current[p[0]]);
+        input.addEventListener('change', function () {
+          var v = getVal(f) || {}; v[p[0]] = input.checked; commit(v);
+        });
+        lbl.appendChild(input); lbl.appendChild(document.createTextNode(p[1]));
+        wrap.appendChild(lbl);
+      });
+    } else if (f.t === 'notes') {
+      var ta = document.createElement('textarea');
+      ta.className = 'embedded-text';
+      ta.value = current || '';
+      ta.addEventListener('input', function () { commit(ta.value); });
+      wrap.appendChild(ta);
+    } else {
+      var inp = document.createElement('input');
+      inp.className = 'embedded-text';
+      inp.type = f.t === 'text' ? textInputType(f.val) : 'text';
+      inp.value = current || '';
+      inp.addEventListener('input', function () { commit(inp.value); });
+      wrap.appendChild(inp);
+    }
+    return wrap;
   }
 
   // Pulls the balanced-paren contents out of an @CALCTEXT(...) annotation.
