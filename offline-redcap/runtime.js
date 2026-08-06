@@ -158,8 +158,13 @@
   }
 
   // ---------- shared REDCap-logic -> JS translation ----------
+  // Handles two kinds of field reference: [field] (this event) and
+  // [event_name][field] (a specific event, used in longitudinal projects).
   function redcapToJsExpr(raw) {
     var expr = raw;
+    expr = expr.replace(/\[([a-zA-Z0-9_]+)\]\[([a-zA-Z0-9_]+)\]/g, function (m, ev, f) {
+      return '__valEvent("' + ev + '","' + f + '")';
+    });
     expr = expr.replace(/\[([a-zA-Z0-9_]+)\(([^)]+)\)\]/g, function (m, f, c) {
       return '__chk(r,"' + f + '","' + c.trim() + '")';
     });
@@ -175,16 +180,25 @@
     return expr;
   }
 
+  // f._test(cur, rec): cur = current event's values (flat), rec = the whole
+  // record (all events), needed to resolve [event][field] cross-event refs.
   function compileLogic(raw) {
     if (!raw || !raw.trim()) return function () { return true; };
     try {
       var expr = redcapToJsExpr(raw);
-      var fn = new Function('r', '__val', '__chk', '__blank',
+      var fn = new Function('r', '__val', '__chk', '__blank', '__valEvent',
         'try{return !!(' + expr + ');}catch(e){return true;}');
-      return function (rec) {
-        return fn(rec, function (rr, name) { return rr[name]; },
+      return function (cur, rec) {
+        return fn(cur,
+          function (rr, name) { return rr[name]; },
           function (rr, name, code) { var v = rr[name]; return (v && v[code]) ? '1' : '0'; },
-          function (v) { return v === undefined || v === null || v === ''; });
+          function (v) { return v === undefined || v === null || v === ''; },
+          function (evName, name) {
+            if (rec && rec.events[evName] && rec.events[evName].values[name] !== undefined) {
+              return rec.events[evName].values[name];
+            }
+            return cur[name];
+          });
       };
     } catch (e) {
       return function () { return true; };
@@ -210,22 +224,24 @@
       var fnCalls = expr.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g) || [];
       var unknown = fnCalls.some(function (m) {
         var name = m.replace(/\s*\($/, '');
-        return ['__round', '__sum', '__min', '__max', 'Math.abs', 'Math.sqrt', '__if', '__val', '__chk', '__blank'].indexOf(name) === -1;
+        return ['__round', '__sum', '__min', '__max', 'Math.abs', 'Math.sqrt', '__if', '__val', '__chk', '__blank', '__valEvent'].indexOf(name) === -1;
       });
       if (unknown) return null;
-      var fn = new Function('r', '__val', '__chk', '__blank', '__round', '__sum', '__min', '__max', '__if',
+      var fn = new Function('r', '__val', '__chk', '__blank', '__round', '__sum', '__min', '__max', '__if', '__valEvent',
         'return (' + expr + ');');
       return function (values) {
         try {
+          var numify = function (v) { return v === undefined || v === '' ? undefined : (isNaN(v) ? v : parseFloat(v)); };
           var out = fn(values,
-            function (rr, name) { var v = rr[name]; return v === undefined || v === '' ? undefined : (isNaN(v) ? v : parseFloat(v)); },
+            function (rr, name) { return numify(rr[name]); },
             function (rr, name, code) { var v = rr[name]; return (v && v[code]) ? 1 : 0; },
             function (v) { return v === undefined || v === null || v === ''; },
             function (x, n) { n = n || 0; if (x === undefined || isNaN(x)) return undefined; var f = Math.pow(10, n); return Math.round(x * f) / f; },
             function () { var s = 0, any = false; for (var i = 0; i < arguments.length; i++) { if (arguments[i] !== undefined && !isNaN(arguments[i])) { s += Number(arguments[i]); any = true; } } return any ? s : undefined; },
             function () { var vals = Array.prototype.slice.call(arguments).filter(function (v) { return v !== undefined && !isNaN(v); }); return vals.length ? Math.min.apply(Math, vals) : undefined; },
             function () { var vals = Array.prototype.slice.call(arguments).filter(function (v) { return v !== undefined && !isNaN(v); }); return vals.length ? Math.max.apply(Math, vals) : undefined; },
-            function (c, a, b) { return c ? a : b; });
+            function (c, a, b) { return c ? a : b; },
+            function (evName, name) { return numify(values[name]); });
           return (out === undefined || out === null || (typeof out === 'number' && isNaN(out))) ? '' : out;
         } catch (e) { return ''; }
       };
@@ -484,22 +500,23 @@
   }
 
   function fieldVisible(f) {
-    var snap = currentEventValuesSnapshot();
-    return f._test(snap);
+    var cur = currentEventValuesSnapshot();
+    var rec = store.records[currentRecordId];
+    return f._test(cur, rec);
   }
 
   function renderMatrix(panel, group) {
     var wrap = el('div', 'field');
-    var visibleRows = group.filter(fieldVisible);
-    if (!visibleRows.length) return;
     var table = document.createElement('table');
     table.className = 'matrix-table';
     var thead = document.createElement('tr');
     thead.appendChild(document.createElement('th'));
     group[0].ch.forEach(function (pair) { var th = document.createElement('th'); th.textContent = pair[1]; thead.appendChild(th); });
     table.appendChild(thead);
-    visibleRows.forEach(function (f) {
+    group.forEach(function (f) {
       var tr = document.createElement('tr');
+      tr.dataset.mrow = f.n;
+      if (!fieldVisible(f)) tr.style.display = 'none';
       var th = document.createElement('td');
       setRichText(th, f.l);
       tr.appendChild(th);
@@ -515,10 +532,11 @@
             var v = getVal(f) || {};
             v[pair[0]] = input.checked;
             setVal(f, v);
+            updateLiveState();
           });
         } else {
           input.checked = current === pair[0];
-          input.addEventListener('change', function () { setVal(f, pair[0]); refreshVisibility(); });
+          input.addEventListener('change', function () { setVal(f, pair[0]); updateLiveState(); });
         }
         td.appendChild(input);
         tr.appendChild(td);
@@ -529,9 +547,43 @@
     panel.appendChild(wrap);
   }
 
+  // REDCap piping: [field] and [event][field] tokens inside label/note/
+  // descriptive HTML get replaced with the field's current (human-readable)
+  // value. Only known field names are substituted, so unrelated bracket
+  // text in the label is left untouched.
+  function pipeText(str, cur, rec) {
+    if (!str) return str;
+    var out = str;
+    out = out.replace(/\[([a-zA-Z0-9_]+)\]\[([a-zA-Z0-9_]+)\]/g, function (m, ev, name) {
+      if (!byName[name]) return m;
+      var v = (rec && rec.events[ev] && rec.events[ev].values[name] !== undefined) ? rec.events[ev].values[name] : cur[name];
+      return formatPipedValue(name, v);
+    });
+    out = out.replace(/\[([a-zA-Z0-9_]+)\]/g, function (m, name) {
+      if (!byName[name]) return m;
+      return formatPipedValue(name, cur[name]);
+    });
+    return out;
+  }
+  function formatPipedValue(name, v) {
+    var f = byName[name];
+    if (v === undefined || v === null || v === '') return '';
+    if (f.t === 'checkbox') {
+      var labels = f.ch.filter(function (p) { return v[p[0]]; }).map(function (p) { return p[1]; });
+      return labels.join(', ');
+    }
+    if (f.ch && f.ch.length) {
+      var match = f.ch.filter(function (p) { return p[0] === v; })[0];
+      return match ? match[1] : String(v);
+    }
+    return String(v);
+  }
+
   function setRichText(el2, html) {
     var clean = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
-    el2.innerHTML = clean;
+    if (/\[[a-zA-Z0-9_]+\]/.test(clean)) el2.dataset.pipeTemplate = clean;
+    var rec = store.records[currentRecordId];
+    el2.innerHTML = pipeText(clean, currentEventValuesSnapshot(), rec);
   }
 
   // Pulls the balanced-paren contents out of an @CALCTEXT(...) annotation.
@@ -561,9 +613,9 @@
   }
 
   function renderField(panel, f) {
-    if (!fieldVisible(f)) return;
     var wrap = el('div', 'field' + (f.hidden ? ' hidden-field' : ''));
     wrap.dataset.field = f.n;
+    if (!fieldVisible(f)) wrap.style.display = 'none';
 
     if (f.t === 'descriptive') {
       var d = el('div', 'descriptive-box');
@@ -580,7 +632,7 @@
     if (f.hidden) label.appendChild(el('span', 'pill pill-hidden', 'HIDDEN'));
     if (f._calcText || f.t === 'calc') label.appendChild(el('span', 'pill pill-calc', 'CALCULATED'));
     wrap.appendChild(label);
-    if (f.note) wrap.appendChild(el('div', 'fnote', f.note));
+    if (f.note) { var noteEl = el('div', 'fnote'); setRichText(noteEl, f.note); wrap.appendChild(noteEl); }
 
     var current = getVal(f);
 
@@ -616,7 +668,7 @@
         var sel = document.createElement('select');
         sel.appendChild(new Option('-- select --', ''));
         choices.forEach(function (p) { var o = new Option(p[1], p[0]); if (current === p[0]) o.selected = true; sel.appendChild(o); });
-        sel.addEventListener('change', function () { setVal(f, sel.value); refreshVisibility(); });
+        sel.addEventListener('change', function () { setVal(f, sel.value); updateLiveState(); });
         wrap.appendChild(sel);
       } else {
         var row = el('div', 'choice-row');
@@ -625,7 +677,7 @@
           var input = document.createElement('input');
           input.type = 'radio'; input.name = f.n; input.value = p[0];
           input.checked = current === p[0];
-          input.addEventListener('change', function () { setVal(f, p[0]); refreshVisibility(); });
+          input.addEventListener('change', function () { setVal(f, p[0]); updateLiveState(); });
           lbl.appendChild(input);
           lbl.appendChild(document.createTextNode(p[1]));
           row.appendChild(lbl);
@@ -643,7 +695,7 @@
           var v = getVal(f) || {};
           v[p[0]] = input.checked;
           setVal(f, v);
-          refreshVisibility();
+          updateLiveState();
         });
         lbl.appendChild(input);
         lbl.appendChild(document.createTextNode(p[1]));
@@ -653,13 +705,13 @@
     } else if (f.t === 'notes') {
       var ta = document.createElement('textarea');
       ta.value = current || '';
-      ta.addEventListener('input', function () { setVal(f, ta.value); });
+      ta.addEventListener('input', function () { setVal(f, ta.value); updateLiveState(); });
       wrap.appendChild(ta);
     } else if (f.t === 'file') {
       var ft = document.createElement('input');
       ft.type = 'text'; ft.placeholder = 'Filename or description';
       ft.value = current || '';
-      ft.addEventListener('input', function () { setVal(f, ft.value); });
+      ft.addEventListener('input', function () { setVal(f, ft.value); updateLiveState(); });
       wrap.appendChild(ft);
       wrap.appendChild(el('div', 'filebox', 'Files are not stored here. Note a filename or description.'));
     } else if (f.t === 'slider') {
@@ -685,7 +737,7 @@
       else if (f.val === 'number_2dp') inp.step = '0.01';
       else if (f.val === 'integer') inp.step = '1';
       inp.value = current || '';
-      inp.addEventListener('input', function () { setVal(f, inp.value); refreshVisibility(); });
+      inp.addEventListener('input', function () { setVal(f, inp.value); updateLiveState(); });
       wrap.appendChild(inp);
       if (f.t !== 'text') wrap.appendChild(el('div', 'fnote', 'Unrecognised field type "' + f.t + '". Shown as text.'));
     }
@@ -704,13 +756,26 @@
     }
   }
 
-  function refreshVisibility() {
+  // Re-evaluates branching visibility and piped text in place, without
+  // rebuilding the DOM, so typing in a field never loses focus.
+  function updateLiveState() {
     var panel = document.getElementById('formPanel');
     if (!panel) return;
-    var formName = panel.dataset.form;
-    panel.innerHTML = '';
-    panel.appendChild(el('h2', null, niceFormName(formName)));
-    renderFormFields(panel, formName);
+    var cur = currentEventValuesSnapshot();
+    var rec = store.records[currentRecordId];
+    panel.querySelectorAll('[data-field]').forEach(function (wrap) {
+      var f = byName[wrap.dataset.field];
+      if (!f) return;
+      wrap.style.display = f._test(cur, rec) ? '' : 'none';
+    });
+    panel.querySelectorAll('[data-mrow]').forEach(function (tr) {
+      var f = byName[tr.dataset.mrow];
+      if (!f) return;
+      tr.style.display = f._test(cur, rec) ? '' : 'none';
+    });
+    panel.querySelectorAll('[data-pipe-template]').forEach(function (node) {
+      node.innerHTML = pipeText(node.dataset.pipeTemplate, cur, rec);
+    });
   }
 
   function el(tag, cls, text) {

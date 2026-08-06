@@ -6,12 +6,6 @@
 
   var dictInput = document.getElementById('dictFile');
   var xmlInput = document.getElementById('xmlFile');
-  var titleInput = document.getElementById('titleOverride');
-  var useEventsChk = document.getElementById('useEvents');
-  var manualEventsRow = document.getElementById('manualEventsRow');
-  var manualEventsInput = document.getElementById('manualEventNames');
-  var includeRepeatChk = document.getElementById('includeRepeatCols');
-  var includeDagChk = document.getElementById('includeDagCol');
   var genBtn = document.getElementById('generateBtn');
   var statusEl = document.getElementById('status');
   var summaryEl = document.getElementById('summary');
@@ -23,18 +17,15 @@
     return readFile(file).then(function (text) {
       dictRows = parseCSV(text);
       report();
-      updateManualEventsVisibility();
     }).catch(function (e) { dictRows = null; setStatus('Could not read data dictionary: ' + e.message, true); throw e; });
   }, function () { dictRows = null; report(); });
 
   setupDropzone(document.getElementById('xmlDropzone'), xmlInput, function (file) {
     return readFile(file).then(function (text) {
       xmlInfo = parseProjectXML(text);
-      if (xmlInfo && xmlInfo.events && xmlInfo.events.length) useEventsChk.checked = true;
       report();
-      updateManualEventsVisibility();
     }).catch(function (e) { xmlInfo = null; setStatus('Could not read project XML: ' + e.message, true); throw e; });
-  }, function () { xmlInfo = null; report(); updateManualEventsVisibility(); });
+  }, function () { xmlInfo = null; report(); });
 
   // Wires a dropzone div (click-to-browse + drag & drop) to a hidden file
   // input, shows the picked filename/size, and offers a "Remove" affordance.
@@ -83,11 +74,6 @@
     });
   }
 
-  useEventsChk.addEventListener('change', updateManualEventsVisibility);
-  function updateManualEventsVisibility() {
-    var mappingKnown = !!(xmlInfo && xmlInfo.events && xmlInfo.events.length && dictRows && xmlEventsMatchForms());
-    manualEventsRow.style.display = (useEventsChk.checked && !mappingKnown) ? '' : 'none';
-  }
   function xmlEventsMatchForms() {
     if (!xmlInfo || !dictRows) return false;
     var knownForms = {}; dictRows.forEach(function (r) { if (r['Form Name']) knownForms[r['Form Name'].trim()] = true; });
@@ -98,13 +84,7 @@
   genBtn.addEventListener('click', function () {
     if (!dictRows || !dictRows.length) { setStatus('Upload a data dictionary CSV first.', true); return; }
     try {
-      var opts = {
-        useEvents: useEventsChk.checked,
-        manualEventNames: manualEventsInput.value,
-        includeRepeatCols: includeRepeatChk.checked,
-        includeDagCol: includeDagChk.checked
-      };
-      var built = buildData(dictRows, xmlInfo, titleInput.value.trim(), opts);
+      var built = buildData(dictRows, xmlInfo);
       setGenerating(true);
       Promise.all([fetchText('runtime.js'), fetchText('runtime.css')]).then(function (r) {
         var html = assembleHTML(built, r[0], r[1]);
@@ -221,7 +201,12 @@
         });
       });
 
-      return { title: title, events: events, formEvents: formEvents };
+      // Best-effort: REDCap's XML doesn't have one fixed way to record
+      // these, so we look for common markers rather than parsing a spec.
+      var repeating = /Repeating\s*=\s*"Yes"/i.test(text) || /redcap:RepeatingInstrument/i.test(text);
+      var dag = /redcap:DAG|data_access_group|DataAccessGroup/i.test(text);
+
+      return { title: title, events: events, formEvents: formEvents, repeating: repeating, dag: dag };
     } catch (e) {
       return null;
     }
@@ -234,8 +219,7 @@
   }
 
   // ---------- Build DATA object from dictionary rows ----------
-  function buildData(rows, xml, titleOverride, opts) {
-    opts = opts || {};
+  function buildData(rows, xml) {
     var fields = [];
     var forms = [];
     rows.forEach(function (row) {
@@ -295,23 +279,16 @@
       }
     }
 
-    var useEvents = opts.useEvents;
-    if (useEvents === undefined) useEvents = eventsMappingKnown;
-    if (useEvents) {
-      if (!eventsMappingKnown) {
-        var manual = (opts.manualEventNames || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-        if (!manual.length) throw new Error('This project uses events, but no event names were detected from an XML and none were typed in manually.');
-        events = manual;
-      }
-    } else {
+    var useEvents = eventsMappingKnown;
+    if (!useEvents) {
       events = ['_default'];
       formEvents = {};
-      eventsMappingKnown = false;
     }
 
+    var title = (xml && xml.title) || 'Offline Survey';
     return {
-      projectTitle: titleOverride || (xml && xml.title) || 'Offline Survey',
-      projectKey: (titleOverride || (xml && xml.title) || 'default').toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+      projectTitle: title,
+      projectKey: title.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'default',
       recordIdField: fields[0].n,
       fields: fields,
       forms: forms,
@@ -319,8 +296,8 @@
       events: events,
       formEvents: formEvents,
       eventsMappingKnown: eventsMappingKnown,
-      includeRepeatCols: !!opts.includeRepeatCols,
-      includeDagCol: !!opts.includeDagCol
+      includeRepeatCols: !!(xml && xml.repeating),
+      includeDagCol: !!(xml && xml.dag)
     };
   }
 
@@ -338,10 +315,12 @@
         var mappingKnown = xmlEventsMatchForms();
         lines.push('Project XML: ' + xmlInfo.events.length + ' event(s) detected (' + xmlInfo.events.join(', ') + ')' +
           (mappingKnown ? ', matched to this dictionary\'s forms.' : '. Could not match them to this dictionary\'s form names, so forms will show under every event.'));
-      } else lines.push('Project XML loaded but no events found in it.');
-      if (xmlInfo.title) lines.push('Project title from XML: ' + xmlInfo.title);
+      } else lines.push('Project XML loaded, no events found, generating a non-longitudinal survey.');
+      lines.push('Project title: ' + (xmlInfo.title || 'Offline Survey (no title in XML)'));
+      if (xmlInfo.repeating) lines.push('Repeating instruments/events detected. redcap_repeat_instrument and redcap_repeat_instance columns will be included.');
+      if (xmlInfo.dag) lines.push('Data access groups detected. redcap_data_access_group column will be included.');
     } else {
-      lines.push('No Project XML uploaded. If this project uses REDCap Events, tick "Project uses Events" below and type the event names, or upload the XML for automatic detection.');
+      lines.push('No Project XML uploaded, generating a non-longitudinal survey titled "Offline Survey". Add the XML for events, the real project title, and repeat/DAG columns.');
     }
     summaryEl.textContent = lines.join(' ');
   }

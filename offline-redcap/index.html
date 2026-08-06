@@ -332,33 +332,10 @@
   </div>
 
   <div class="card">
-    <h2><span class="step-num">3</span>REDCap re-import settings</h2>
-    <div class="desc">These control the exported CSV's column layout, so it matches what REDCap's
-      Data Import Tool expects for this project (compare against your project's own Import
-      Template download if unsure).</div>
-    <div class="row checkbox-row">
-      <label><input type="checkbox" id="useEvents"> This project uses REDCap Events (longitudinal)</label>
-    </div>
-    <div class="row" id="manualEventsRow" style="display:none;">
-      <label class="field-label" for="manualEventNames">Event unique names, comma-separated, in order</label>
-      <input type="text" id="manualEventNames" placeholder="e.g. recruitment_arm_1, baseline_arm_1, followup_3mo_arm_1">
-      <div class="desc" style="margin-top:8px;margin-bottom:0;">Only needed without an XML. Every
-        form shows under every event listed here; fill each one under its correct event.</div>
-    </div>
-    <div class="row checkbox-row">
-      <label><input type="checkbox" id="includeRepeatCols"> Include redcap_repeat_instrument / redcap_repeat_instance columns</label>
-    </div>
-    <div class="row checkbox-row">
-      <label><input type="checkbox" id="includeDagCol"> Include redcap_data_access_group column</label>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2><span class="step-num">4</span>Generate</h2>
-    <div class="row">
-      <label class="field-label" for="titleOverride">Survey title (optional)</label>
-      <input type="text" id="titleOverride" placeholder="Defaults to project name from XML, or &quot;Offline Survey&quot;">
-    </div>
+    <h2><span class="step-num">3</span>Generate</h2>
+    <div class="desc">Events, the project title, and repeat/DAG columns are all read from the
+      Project XML if you added one. Without it, this generates a non-longitudinal survey titled
+      "Offline Survey".</div>
     <button class="primary" id="generateBtn">Generate offline survey (.html)</button>
     <div id="summary"></div>
     <div id="status"></div>
