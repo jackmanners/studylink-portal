@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline Survey Generator, StudyLink Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2ebdd;
+    --card-bg: #fffdf8;
+    --text: #332a1f;
+    --muted: #8c8071;
+    --primary: #2f5d52;
+    --primary-dark: #21453c;
+    --success: #4d7c5f;
+    --error: #b0503a;
+    --border: #e5dcc6;
+    --radius: 10px;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Public Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    font-family: var(--font-body);
+    color: var(--text);
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 48px 20px 64px;
+  }
+  .eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 1.9rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+  }
+  p.intro {
+    margin: 0 0 36px;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    max-width: 54ch;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(64, 48, 24, 0.08);
+    padding: 28px 26px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 6px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fdfaf3;
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-right: 8px;
+    vertical-align: 2px;
+  }
+  .desc {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+  .row { margin-bottom: 16px; }
+  .row:last-child { margin-bottom: 0; }
+  label.field-label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  input[type=text] {
+    width: 100%;
+    padding: 11px 13px;
+    font-size: 0.95rem;
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type=text]:focus { border-color: var(--primary); }
+  input[type=text]::placeholder { color: #b3a892; }
+
+  /* Dropzones */
+  .dropzone {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    padding: 26px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--primary);
+    background: #eee4cd;
+  }
+  .dropzone.required { border-color: #d9c6a3; }
+  .dropzone.has-file {
+    border-style: solid;
+    border-color: var(--success);
+    background: #eef3ee;
+  }
+  .dropzone .dz-icon {
+    width: 30px;
+    height: 30px;
+    margin: 0 auto 10px;
+    color: var(--primary);
+    display: block;
+  }
+  .dropzone .dz-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    margin-bottom: 3px;
+  }
+  .dropzone .dz-sub {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .dropzone .dz-file {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--primary-dark);
+    word-break: break-all;
+  }
+  .dropzone .dz-file-meta {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .dz-remove {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 0.76rem;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: var(--font-body);
+  }
+  .dz-remove:hover { color: var(--error); }
+  .required-tag {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary-dark);
+    background: #e2d9bd;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 6px;
+    vertical-align: 2px;
+  }
+  .optional-tag {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 6px;
+    vertical-align: 2px;
+  }
+
+  .checkbox-row label {
+    font-weight: 500;
+    font-size: 0.88rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .checkbox-row input[type=checkbox] {
+    width: 17px;
+    height: 17px;
+    margin-top: 1px;
+    accent-color: var(--primary);
+    flex: none;
+  }
+
+  button.primary {
+    width: 100%;
+    padding: 13px 16px;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fdfaf3;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  button.primary:hover:not(:disabled) { background: var(--primary-dark); }
+  button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+  .loader { display: flex; align-items: center; justify-content: center; gap: 7px; height: 10px; }
+  .loader span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; transform: scale(0.4); opacity: 0.4; }
+  .loader span:nth-child(1) { animation: dot-breathe-0 1.7s ease-in-out infinite; }
+  .loader span:nth-child(2) { animation: dot-breathe-1 1.7s ease-in-out infinite; }
+  .loader span:nth-child(3) { animation: dot-breathe-2 1.7s ease-in-out infinite; }
+  .loader span:nth-child(4) { animation: dot-breathe-3 1.7s ease-in-out infinite; }
+  .loader span:nth-child(5) { animation: dot-breathe-4 1.7s ease-in-out infinite; }
+  @keyframes dot-breathe-0 { 0% { transform: scale(0.4); opacity: 0.4; } 10%, 90% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.4); opacity: 0.4; } }
+  @keyframes dot-breathe-1 { 0%, 10% { transform: scale(0.4); opacity: 0.4; } 20%, 80% { transform: scale(1); opacity: 1; } 90%, 100% { transform: scale(0.4); opacity: 0.4; } }
+  @keyframes dot-breathe-2 { 0%, 20% { transform: scale(0.4); opacity: 0.4; } 30%, 70% { transform: scale(1); opacity: 1; } 80%, 100% { transform: scale(0.4); opacity: 0.4; } }
+  @keyframes dot-breathe-3 { 0%, 30% { transform: scale(0.4); opacity: 0.4; } 40%, 60% { transform: scale(1); opacity: 1; } 70%, 100% { transform: scale(0.4); opacity: 0.4; } }
+  @keyframes dot-breathe-4 { 0%, 40% { transform: scale(0.4); opacity: 0.4; } 50% { transform: scale(1); opacity: 1; } 60%, 100% { transform: scale(0.4); opacity: 0.4; } }
+
+  #summary {
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  #summary:empty { display: none; }
+  #status {
+    margin-top: 12px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    min-height: 20px;
+  }
+  #status.ok { color: var(--success); }
+  #status.err { color: var(--error); }
+
+  .steps { margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.85rem; line-height: 1.7; }
+  .steps li { margin-bottom: 10px; }
+  .steps li:last-child { margin-bottom: 0; }
+
+  footer {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 20px 40px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">StudyLink Portal, Offline Backup</p>
+  <h1>Offline survey generator</h1>
+  <p class="intro">Turns a REDCap Data Dictionary into a single HTML file your team can fill in
+    without REDCap, for when the server is unreachable. Runs entirely in your browser.</p>
+
+  <div class="card">
+    <h2><span class="step-num">1</span>Data Dictionary<span class="required-tag">Required</span></h2>
+    <div class="desc">In REDCap: Project Setup &rarr; Data Dictionary &rarr; Download the current
+      instrument(s) as CSV. This drives field types, choices, and branching logic.</div>
+    <div class="dropzone required" id="dictDropzone" tabindex="0" role="button" aria-label="Upload Data Dictionary CSV">
+      <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M4 19h16"></path></svg>
+      <div class="dz-empty">
+        <div class="dz-title">Drop the Data Dictionary CSV here</div>
+        <div class="dz-sub">or click to browse</div>
+      </div>
+      <div class="dz-filled" style="display:none;">
+        <div class="dz-file"></div>
+        <div class="dz-file-meta"></div>
+        <button type="button" class="dz-remove">Remove</button>
+      </div>
+    </div>
+    <input type="file" id="dictFile" accept=".csv" style="display:none;">
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">2</span>Project XML<span class="optional-tag">Optional</span></h2>
+    <div class="desc">In REDCap: Other Functionalities &rarr; "Backup Project", or the XML export
+      under Project Setup. Add this if your project uses Events/Arms, to group forms by event and
+      pick up the project's real title. Skip it for a single-arm project with no events.</div>
+    <div class="dropzone" id="xmlDropzone" tabindex="0" role="button" aria-label="Upload Project XML">
+      <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M4 19h16"></path></svg>
+      <div class="dz-empty">
+        <div class="dz-title">Drop the Project XML here</div>
+        <div class="dz-sub">or click to browse, optional</div>
+      </div>
+      <div class="dz-filled" style="display:none;">
+        <div class="dz-file"></div>
+        <div class="dz-file-meta"></div>
+        <button type="button" class="dz-remove">Remove</button>
+      </div>
+    </div>
+    <input type="file" id="xmlFile" accept=".xml" style="display:none;">
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">3</span>REDCap re-import settings</h2>
+    <div class="desc">These control the exported CSV's column layout, so it matches what REDCap's
+      Data Import Tool expects for this project (compare against your project's own Import
+      Template download if unsure).</div>
+    <div class="row checkbox-row">
+      <label><input type="checkbox" id="useEvents"> This project uses REDCap Events (longitudinal)</label>
+    </div>
+    <div class="row" id="manualEventsRow" style="display:none;">
+      <label class="field-label" for="manualEventNames">Event unique names, comma-separated, in order</label>
+      <input type="text" id="manualEventNames" placeholder="e.g. recruitment_arm_1, baseline_arm_1, followup_3mo_arm_1">
+      <div class="desc" style="margin-top:8px;margin-bottom:0;">Only needed without an XML. Every
+        form shows under every event listed here; fill each one under its correct event.</div>
+    </div>
+    <div class="row checkbox-row">
+      <label><input type="checkbox" id="includeRepeatCols"> Include redcap_repeat_instrument / redcap_repeat_instance columns</label>
+    </div>
+    <div class="row checkbox-row">
+      <label><input type="checkbox" id="includeDagCol"> Include redcap_data_access_group column</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">4</span>Generate</h2>
+    <div class="row">
+      <label class="field-label" for="titleOverride">Survey title (optional)</label>
+      <input type="text" id="titleOverride" placeholder="Defaults to project name from XML, or &quot;Offline Survey&quot;">
+    </div>
+    <button class="primary" id="generateBtn">Generate offline survey (.html)</button>
+    <div id="summary"></div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Using the generated file</h2>
+    <ul class="steps">
+      <li>Save the downloaded <code>.html</code> file somewhere every study staff member can reach:
+        shared drive, USB, each laptop.</li>
+      <li>Open it in any browser. Click "+ New record" to start a participant, then click through
+        forms with Prev/Next.</li>
+      <li>Answers autosave to the browser automatically. Click "Enable file autosave" once to also
+        mirror a JSON backup to a file on disk (Chrome/Edge only); that choice is remembered on
+        reload.</li>
+      <li>"Export CSV" downloads captured data in REDCap's Data Import Tool layout, ready to
+        re-import. "Backup JSON" / "Restore JSON" round-trip the full data, e.g. to move between
+        computers.</li>
+      <li>Branching logic, checkboxes, matrix question groups, required markers and sliders are
+        reproduced from the dictionary. Calculated fields show a CALCULATED pill with the formula
+        available in a dropdown; hidden fields show a HIDDEN pill. File uploads become a
+        filename/description note.</li>
+    </ul>
+  </div>
+</div>
+<footer>Runs entirely in your browser. No data is uploaded anywhere by this generator or the files it produces.</footer>
+<script src="generator.js"></script>
+</body>
+</html>
