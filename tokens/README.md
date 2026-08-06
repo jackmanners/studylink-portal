@@ -3,7 +3,7 @@
 Static frontend (GitHub Pages) + one Google Apps Script backend (Gmail + REDCap). Participants
 log in with a token and get their device's verification code.
 
-Lives at `studylink/` in the repo, one of a few small study apps hosted from the same GitHub
+Lives at `tokens/` in the repo, one of a few small study apps hosted from the same GitHub
 Pages site (see the [repo root README](../README.md)).
 
 - `index.html` — participant login/code page
@@ -60,11 +60,11 @@ REDCap project needs: a token field (`patient_token` default), a status field
 Remove a study: `unregisterStudy()`. Check a study's config: "Check system status" on the
 sign-in page (no token needed).
 
-Participant link: `https://<you>.github.io/studylink-portal/studylink/?base=<base>`.
+Participant link: `https://<you>.github.io/studylink-portal/tokens/?base=<base>`.
 
 ## Host on GitHub Pages
 
-The whole repo is one GitHub Pages site; this app is just the `studylink/` subfolder of it.
+The whole repo is one GitHub Pages site; this app is just the `tokens/` subfolder of it.
 
 ```bash
 git remote add origin https://github.com/<you>/studylink-portal.git

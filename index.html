@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Study Apps</title>
-<link rel="icon" type="image/svg+xml" href="studylink/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="tokens/favicon.svg">
 <script>
   // Anyone with an existing participant link or PWA shortcut lands here
   // with no visible interruption: a `?base=` param, or a remembered study
@@ -15,7 +15,7 @@
     var remembered = null;
     try { remembered = localStorage.getItem('studylink_last_base'); } catch (e) {}
     if (params.has('base') || remembered) {
-      location.replace('./studylink/' + location.search);
+      location.replace('./tokens/' + location.search);
     }
   })();
 </script>
@@ -103,7 +103,7 @@
     <p class="eyebrow">Study Apps</p>
     <h1>Pick an app</h1>
 
-    <a class="app-card" href="./studylink/">
+    <a class="app-card" href="./tokens/">
       <div class="app-name">StudyLink Portal</div>
       <div class="app-desc">Participant sign-in and device verification codes. Study staff:
         use the admin panel for study setup.</div>
