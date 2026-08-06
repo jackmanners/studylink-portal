@@ -3,9 +3,7 @@
 One GitHub Pages site hosting a few small study-support apps as subfolders, plus one shared
 Google Apps Script backend.
 
-- `index.html` — homepage, picks an app. Redirects straight through if a participant link
-  (`?base=`) or a remembered study is detected, so existing links and installed PWAs keep
-  working.
+- `index.html` — homepage, picks an app.
 - `tokens/` — [StudyLink Portal](tokens/README.md): participant sign-in and device
   verification codes, plus a study-management admin panel.
 - `offline-redcap/` — [Offline Survey Generator](offline-redcap/README.md): turns a REDCap Data

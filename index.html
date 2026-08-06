@@ -5,20 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Study Apps</title>
 <link rel="icon" type="image/svg+xml" href="tokens/favicon.svg">
-<script>
-  // Anyone with an existing participant link or PWA shortcut lands here
-  // with no visible interruption: a `?base=` param, or a remembered study
-  // from a prior visit, sends them straight to the app instead of this
-  // picker. Runs before the page paints to avoid a flash of the picker.
-  (function () {
-    var params = new URLSearchParams(location.search);
-    var remembered = null;
-    try { remembered = localStorage.getItem('studylink_last_base'); } catch (e) {}
-    if (params.has('base') || remembered) {
-      location.replace('./tokens/' + location.search);
-    }
-  })();
-</script>
 <style>
   :root {
     --bg: #f2ebdd;
