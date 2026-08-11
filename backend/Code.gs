@@ -514,7 +514,8 @@ function handleVerify(token, base) {
   }
 
   if (!isActiveStatus_(record.forwarding_status)) {
-    registerFailedAttempt(token);
+    // Not a guessing attempt — the token is valid, it's just not active
+    // yet — so this doesn't count toward the lockout.
     return { success: false, error: 'Your device isn\'t set up yet. Please contact your study coordinator.' };
   }
 
