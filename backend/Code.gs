@@ -57,6 +57,11 @@
 
 const OPTIONAL_STUDY_FIELD_DEFAULTS = {
   ACCESS_TOKEN_FIELD: 'patient_token',
+  // REDCap's own name for its record identifier field. "record_id" is
+  // just REDCap's default name for whatever the first field in a project
+  // is — many projects rename it (e.g. "study_id", "participant_id"), so
+  // this can't be hardcoded.
+  RECORD_ID_FIELD: 'record_id',
   // REDCap field holding a full override email address for a participant's
   // device, if their study collects one directly instead of relying on the
   // record_id-derived "+alias" scheme. Must exist in REDCap (any name is
@@ -125,6 +130,7 @@ function getConfig_(base) {
     RELAY_ALIAS: relayAlias,
     FORWARDED: forwarded,
     ACCESS_TOKEN_FIELD: study.accessTokenField || OPTIONAL_STUDY_FIELD_DEFAULTS.ACCESS_TOKEN_FIELD,
+    RECORD_ID_FIELD: study.recordIdField || OPTIONAL_STUDY_FIELD_DEFAULTS.RECORD_ID_FIELD,
     FORWARDING_STATUS_FIELD: study.forwardingStatusField || OPTIONAL_STUDY_FIELD_DEFAULTS.FORWARDING_STATUS_FIELD,
     DEVICE_EMAIL_FIELD: study.deviceEmailField || OPTIONAL_STUDY_FIELD_DEFAULTS.DEVICE_EMAIL_FIELD
   };
@@ -162,6 +168,7 @@ function registerStudy() {
       forwarded: false,
       // baseEmail: 'their-study-inbox@gmail.com', // required only if forwarded: true
       accessTokenField: 'patient_token',           // optional, shown are the defaults
+      recordIdField: 'record_id',                  // REDCap's actual record-identifier field name
       forwardingStatusField: 'forwarding_status',
       deviceEmailField: 'device_email'
     })
@@ -310,13 +317,13 @@ function handleHealthCheck(base) {
 // export call against a filter that can never match confirms both
 // connectivity and that all four configured field names actually exist.
 function checkRedcap_(config) {
-  const fields = ['record_id', config.ACCESS_TOKEN_FIELD, config.FORWARDING_STATUS_FIELD, config.DEVICE_EMAIL_FIELD];
+  const fields = [config.RECORD_ID_FIELD, config.ACCESS_TOKEN_FIELD, config.FORWARDING_STATUS_FIELD, config.DEVICE_EMAIL_FIELD];
   const payload = {
     token: config.REDCAP_API_TOKEN,
     content: 'record',
     format: 'json',
     type: 'flat',
-    filterLogic: "[record_id]='__studylink_healthcheck_no_such_record__'",
+    filterLogic: "[" + config.RECORD_ID_FIELD + "]='__studylink_healthcheck_no_such_record__'",
     returnFormat: 'json'
   };
   fields.forEach((f, i) => { payload['fields[' + i + ']'] = f; });
@@ -464,7 +471,7 @@ function handleAdminRegisterStudy(study) {
     }
   }
 
-  ['accessTokenField', 'forwardingStatusField', 'deviceEmailField'].forEach((key) => {
+  ['accessTokenField', 'recordIdField', 'forwardingStatusField', 'deviceEmailField'].forEach((key) => {
     const value = String(study[key] || existing[key] || '').trim();
     if (value) config[key] = value;
   });
@@ -612,7 +619,7 @@ function findRecordByToken(token, config) {
     format: 'json',
     type: 'flat',
     filterLogic: '[' + config.ACCESS_TOKEN_FIELD + ']=\'' + token.replace(/'/g, "\\'") + '\'',
-    'fields[0]': 'record_id',
+    'fields[0]': config.RECORD_ID_FIELD,
     'fields[1]': config.FORWARDING_STATUS_FIELD,
     'fields[2]': config.DEVICE_EMAIL_FIELD,
     returnFormat: 'json'
@@ -644,7 +651,7 @@ function findRecordByToken(token, config) {
 
   const raw = records[0];
   return {
-    record_id: raw.record_id,
+    record_id: raw[config.RECORD_ID_FIELD],
     forwarding_status: raw[config.FORWARDING_STATUS_FIELD],
     device_email: raw[config.DEVICE_EMAIL_FIELD]
   };

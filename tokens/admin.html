@@ -216,6 +216,8 @@
         <summary style="cursor:pointer; font-size:0.85rem; font-weight:600;">Advanced (REDCap field name overrides)</summary>
         <label for="fAccessField">Access token field</label>
         <input type="text" id="fAccessField" placeholder="patient_token (default)" autocomplete="off" />
+        <label for="fRecordIdField">Record ID field<span class="help-icon" title="REDCap's own name for its record identifier field — often not literally &quot;record_id&quot;, e.g. &quot;study_id&quot; or &quot;participant_id&quot;.">?</span></label>
+        <input type="text" id="fRecordIdField" placeholder="record_id (default)" autocomplete="off" />
         <label for="fForwardingField">Forwarding status field</label>
         <input type="text" id="fForwardingField" placeholder="forwarding_status (default)" autocomplete="off" />
         <label for="fDeviceField">Device email field</label>
@@ -254,6 +256,7 @@
   const fRedcapUrl = document.getElementById('fRedcapUrl');
   const fRedcapToken = document.getElementById('fRedcapToken');
   const fAccessField = document.getElementById('fAccessField');
+  const fRecordIdField = document.getElementById('fRecordIdField');
   const fForwardingField = document.getElementById('fForwardingField');
   const fDeviceField = document.getElementById('fDeviceField');
   const saveBtn = document.getElementById('saveBtn');
@@ -353,6 +356,7 @@
     fRedcapUrl.placeholder = 'Leave blank to keep existing';
     fRedcapToken.value = '';
     fAccessField.value = '';
+    fRecordIdField.value = '';
     fForwardingField.value = '';
     fDeviceField.value = '';
     formStatus.textContent = '';
@@ -389,6 +393,7 @@
     fRedcapToken.value = '';
     fRedcapToken.placeholder = 'Leave blank to keep existing (when editing)';
     fAccessField.value = '';
+    fRecordIdField.value = '';
     fForwardingField.value = '';
     fDeviceField.value = '';
   }
@@ -409,6 +414,7 @@
       redcapApiToken: fRedcapToken.value.trim(),
       baseEmail: fBaseEmail.value.trim(),
       accessTokenField: fAccessField.value.trim(),
+      recordIdField: fRecordIdField.value.trim(),
       forwardingStatusField: fForwardingField.value.trim(),
       deviceEmailField: fDeviceField.value.trim()
     };

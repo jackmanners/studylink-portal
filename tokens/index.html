@@ -656,6 +656,11 @@
     const prefillToken = new URLSearchParams(window.location.search).get('token');
     if (prefillToken) {
       patientTokenInput.value = prefillToken;
+      // A full link (base + token) means the participant doesn't need to
+      // see or touch the login form at all — sign them in immediately.
+      if (!patientTokenInput.disabled) {
+        performLogin(prefillToken);
+      }
     }
   }
 
@@ -774,7 +779,7 @@
     qrOverlay.classList.add('hidden');
   }
 
-  function handleQrResult(rawValue) {
+  async function handleQrResult(rawValue) {
     let url;
     try {
       url = new URL(rawValue);
@@ -793,9 +798,12 @@
     }
 
     studyBaseInput.value = base;
-    resolveStudy(base);
+    await resolveStudy(base);
     if (token) {
       patientTokenInput.value = token;
+      if (!patientTokenInput.disabled) {
+        performLogin(token);
+      }
     }
   }
 
@@ -818,11 +826,15 @@
   }
 
   // ── Login ────────────────────────────────────────────────────────────
-  loginForm.addEventListener('submit', async (e) => {
+  loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const token = document.getElementById('patientToken').value.trim();
-    if (!token) return;
+    const token = patientTokenInput.value.trim();
+    if (token) performLogin(token);
+  });
 
+  // Shared by a manual "Continue" press, a full link's prefilled token,
+  // and a scanned QR code — all three just mean "log in with this token."
+  async function performLogin(token) {
     loginError.textContent = '';
     setLoginLoading(true);
 
@@ -840,7 +852,7 @@
     } finally {
       setLoginLoading(false);
     }
-  });
+  }
 
   function setLoginLoading(isLoading) {
     loginBtn.disabled = isLoading;

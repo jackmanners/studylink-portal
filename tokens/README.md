@@ -54,8 +54,11 @@ nothing else to push.
 
 REDCap project needs: a token field (`patient_token` default), a status field
 (`forwarding_status` default, must be `1` to allow login), a device-email override field
-(`device_email` default, can be blank per record). Override names via `accessTokenField` /
-`forwardingStatusField` / `deviceEmailField` in the JSON above.
+(`device_email` default, can be blank per record). The record identifier field also needs
+naming if it isn't literally called `record_id` (REDCap's default name for whatever the
+project's first field is — many projects rename it, e.g. `study_id`). Override names via
+`accessTokenField` / `recordIdField` / `forwardingStatusField` / `deviceEmailField` in the
+JSON above.
 
 Remove a study: `unregisterStudy()`. Check a study's config: "Check system status" on the
 sign-in page (no token needed).
