@@ -513,7 +513,7 @@ function handleVerify(token, base) {
     return { success: false, error: 'That access token wasn\'t recognized. Please check it and try again.' };
   }
 
-  if (record.forwarding_status !== '1') {
+  if (!isActiveStatus_(record.forwarding_status)) {
     registerFailedAttempt(token);
     return { success: false, error: 'Your device isn\'t set up yet. Please contact your study coordinator.' };
   }
@@ -658,6 +658,14 @@ function findRecordByToken(token, config) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
+
+// REDCap yes/no and radio fields can export as 1/0, true/false, or a
+// Yes/No label depending on how the field was built — accept any of them
+// rather than requiring the literal string "1".
+function isActiveStatus_(value) {
+  const normalized = String(value == null ? '' : value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
 
 function buildAlias(recordId, config) {
   const baseEmail = config.BASE_EMAIL;
