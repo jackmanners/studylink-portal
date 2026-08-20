@@ -196,10 +196,6 @@ function setAdminToken() {
   PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN', 'CHOOSE_A_LONG_RANDOM_TOKEN');
 }
 
-// Failed-verify lockout: max attempts per token within LOCKOUT_WINDOW_SEC.
-const MAX_VERIFY_ATTEMPTS = 5;
-const LOCKOUT_WINDOW_SEC = 600; // 10 minutes
-
 // How long a verified token stays authorized to call fetchCode without
 // re-checking REDCap. Comfortably covers the frontend's 2-minute poll.
 const SESSION_TTL_SEC = 300; // 5 minutes
@@ -568,25 +564,17 @@ function handleAdminDebugToken(base, token) {
 // ── Action: verify ─────────────────────────────────────────────────────
 
 function handleVerify(token, base) {
-  if (isLockedOut(token)) {
-    return { success: false, error: 'Too many attempts. Please try again later.' };
-  }
-
   const config = getConfig_(base);
   const record = findRecordByToken(token, config);
 
   if (!record) {
-    registerFailedAttempt(token);
     return { success: false, error: 'That access token wasn\'t recognized. Please check it and try again.' };
   }
 
   if (!isActiveStatus_(record.forwarding_status)) {
-    // Not a guessing attempt — the token is valid, it's just not active
-    // yet — so this doesn't count toward the lockout.
     return { success: false, error: 'Your device isn\'t set up yet. Please contact your study coordinator.' };
   }
 
-  clearFailedAttempts(token);
   const deviceEmail = String(record.device_email || '').trim();
   const address = deviceEmail || buildAlias(record.record_id, config);
   startSession(token, record.record_id, deviceEmail);
@@ -785,21 +773,3 @@ function getSession(token) {
   }
 }
 
-// ── Lockout (per token, using CacheService) ──────────────────────────────
-
-function isLockedOut(token) {
-  const cache = CacheService.getScriptCache();
-  const count = Number(cache.get('attempts_' + token) || 0);
-  return count >= MAX_VERIFY_ATTEMPTS;
-}
-
-function registerFailedAttempt(token) {
-  const cache = CacheService.getScriptCache();
-  const key = 'attempts_' + token;
-  const count = Number(cache.get(key) || 0) + 1;
-  cache.put(key, String(count), LOCKOUT_WINDOW_SEC);
-}
-
-function clearFailedAttempts(token) {
-  CacheService.getScriptCache().remove('attempts_' + token);
-}

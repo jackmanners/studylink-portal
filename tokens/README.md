@@ -115,9 +115,9 @@ Usage: enter the token, Load studies.
 
 ## Security
 
-- Access token is the only credential — issue random 12+ char strings, not guessable ones.
-- 5 failed attempts / 10 min lockout, per token (participant and admin tokens separately). No
-  IP-based throttling.
+- Access token is the only credential — issue random 12+ char strings, not guessable ones. No
+  lockout on participant login (removed — random 12+ char tokens don't need it, and it kept
+  locking out legitimate participants). Admin token still has its own 5-attempt/10-min lockout.
 - Credentials live only in Script Properties — never in this repo, never sent to the browser.
 - `fetchCode` searches `in:anywhere` (incl. Spam/Trash) and returns up to 10 recent matches, not
   just the latest.
