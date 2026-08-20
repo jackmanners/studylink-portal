@@ -772,12 +772,12 @@ function findRecordByToken(token, config) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-// REDCap yes/no and radio fields can export as 1/0, true/false, or a
-// Yes/No label depending on how the field was built — accept any of them
-// rather than requiring the literal string "1".
+// Defaults to active — blank/unset (most REDCap projects never touch
+// this field per record) or any value other than an explicit 0/false/no
+// counts as active. Only an explicit falsy value blocks login.
 function isActiveStatus_(value) {
   const normalized = String(value == null ? '' : value).trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  return normalized !== '0' && normalized !== 'false' && normalized !== 'no';
 }
 
 function buildAlias(recordId, config) {
