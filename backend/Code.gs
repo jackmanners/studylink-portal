@@ -202,7 +202,7 @@ const SESSION_TTL_SEC = 300; // 5 minutes
 
 // ── Entry point ─────────────────────────────────────────────────────────
 
-const ADMIN_ACTIONS = ['adminListStudies', 'adminRegisterStudy', 'adminUnregisterStudy', 'adminDebugToken'];
+const ADMIN_ACTIONS = ['adminListStudies', 'adminRegisterStudy', 'adminUnregisterStudy', 'adminDebugToken', 'adminListTokens'];
 
 function doPost(e) {
   let body;
@@ -231,6 +231,9 @@ function doPost(e) {
       }
       if (action === 'adminDebugToken') {
         return jsonOutput(handleAdminDebugToken(body.base, body.token));
+      }
+      if (action === 'adminListTokens') {
+        return jsonOutput(handleAdminListTokens(body.base));
       }
     } catch (err) {
       return jsonOutput({ success: false, error: 'Server error: ' + err.message });
@@ -373,8 +376,9 @@ function checkRelay_(config) {
 // ── Admin actions (admin.html) ────────────────────────────────────────
 // Lets studies be registered/edited/removed from the browser instead of
 // the Apps Script editor. Gated by ADMIN_TOKEN (see setAdminToken()) —
-// these responses never echo back REDCap credentials once stored, only
-// booleans/labels, so a stolen adminListStudies response can't leak them.
+// this page is already treated as fully trusted (it can set arbitrary
+// REDCap credentials), so responses echo back real stored values,
+// including REDCap credentials, rather than hiding them.
 
 const MAX_ADMIN_ATTEMPTS = 5;
 const ADMIN_LOCKOUT_WINDOW_SEC = 600; // 10 minutes
@@ -417,9 +421,13 @@ function handleAdminListStudies() {
         base: base,
         name: parsed.name || base,
         forwarded: !!parsed.forwarded,
-        hasRedcapUrl: !!parsed.redcapApiUrl,
-        hasRedcapToken: !!parsed.redcapApiToken,
-        baseEmail: parsed.forwarded ? (parsed.baseEmail || '') : ''
+        redcapApiUrl: parsed.redcapApiUrl || '',
+        redcapApiToken: parsed.redcapApiToken || '',
+        baseEmail: parsed.forwarded ? (parsed.baseEmail || '') : '',
+        accessTokenField: parsed.accessTokenField || OPTIONAL_STUDY_FIELD_DEFAULTS.ACCESS_TOKEN_FIELD,
+        recordIdField: parsed.recordIdField || OPTIONAL_STUDY_FIELD_DEFAULTS.RECORD_ID_FIELD,
+        forwardingStatusField: parsed.forwardingStatusField || OPTIONAL_STUDY_FIELD_DEFAULTS.FORWARDING_STATUS_FIELD,
+        deviceEmailField: parsed.deviceEmailField || OPTIONAL_STUDY_FIELD_DEFAULTS.DEVICE_EMAIL_FIELD
       };
     })
     .sort((a, b) => a.base.localeCompare(b.base));
@@ -559,6 +567,55 @@ function handleAdminDebugToken(base, token) {
     records: Array.isArray(records) ? records : null,
     rawBody: Array.isArray(records) ? null : bodyText.substring(0, 500)
   };
+}
+
+// Every record in a study's REDCap project with its token/status/device
+// email, unfiltered — so an admin can see what tokens actually exist
+// instead of guessing whether a specific one does.
+function handleAdminListTokens(base) {
+  const cleanBase = sanitizeBase_(base);
+  if (!cleanBase) {
+    return { success: false, error: 'Invalid base value.' };
+  }
+
+  let config;
+  try {
+    config = getConfig_(cleanBase);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+
+  const payload = {
+    token: config.REDCAP_API_TOKEN,
+    content: 'record',
+    format: 'json',
+    type: 'flat',
+    'fields[0]': config.RECORD_ID_FIELD,
+    'fields[1]': config.ACCESS_TOKEN_FIELD,
+    'fields[2]': config.FORWARDING_STATUS_FIELD,
+    'fields[3]': config.DEVICE_EMAIL_FIELD,
+    returnFormat: 'json'
+  };
+
+  let response;
+  try {
+    response = UrlFetchApp.fetch(config.REDCAP_API_URL, { method: 'post', payload: payload, muteHttpExceptions: true });
+  } catch (err) {
+    return { success: false, error: 'REDCap request failed: ' + err.message };
+  }
+
+  if (response.getResponseCode() !== 200) {
+    return { success: false, error: 'HTTP ' + response.getResponseCode() + ': ' + response.getContentText().substring(0, 300) };
+  }
+
+  let records;
+  try {
+    records = JSON.parse(response.getContentText());
+  } catch (err) {
+    return { success: false, error: 'Unexpected REDCap response.' };
+  }
+
+  return { success: true, records: records };
 }
 
 // ── Action: verify ─────────────────────────────────────────────────────

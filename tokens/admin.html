@@ -220,7 +220,7 @@
       <input type="text" id="fRedcapUrl" placeholder="https://your-redcap-instance.org/api/" autocomplete="off" />
 
       <label for="fRedcapToken">REDCap API token</label>
-      <input type="password" id="fRedcapToken" placeholder="Leave blank to keep existing (when editing)" autocomplete="new-password" />
+      <input type="text" id="fRedcapToken" placeholder="Leave blank to keep existing (when editing)" autocomplete="off" />
 
       <details style="margin-top:16px;">
         <summary style="cursor:pointer; font-size:0.85rem; font-weight:600;">Advanced (REDCap field name overrides)</summary>
@@ -249,6 +249,7 @@
       <input type="text" id="dToken" placeholder="Token to look up" autocomplete="off" />
       <div class="row">
         <button type="button" id="debugBtn">Debug token</button>
+        <button type="button" class="secondary" id="listTokensBtn">List all tokens in project</button>
       </div>
       <pre id="debugOutput" class="hidden"></pre>
     </div>
@@ -347,11 +348,18 @@
       const kind = s.forwarded
         ? '<span class="pill">forwarded</span>'
         : '<span class="pill">dedicated</span>';
-      const redcapOk = s.hasRedcapUrl && s.hasRedcapToken;
+      const redcapOk = s.redcapApiUrl && s.redcapApiToken;
+      const redcapDetail = redcapOk
+        ? '<code>' + escapeHtml(s.redcapApiUrl) + '</code><div class="hint">token: <code>' + escapeHtml(s.redcapApiToken) + '</code></div>'
+        : '<span style="color:var(--error)">incomplete</span>';
+      const fieldsDetail = '<div class="hint">token field: <code>' + escapeHtml(s.accessTokenField) + '</code>, ' +
+        'record ID field: <code>' + escapeHtml(s.recordIdField) + '</code>, ' +
+        'status field: <code>' + escapeHtml(s.forwardingStatusField) + '</code>, ' +
+        'device email field: <code>' + escapeHtml(s.deviceEmailField) + '</code></div>';
       return '<tr>' +
         '<td>' + escapeHtml(s.base) + '<div class="hint">' + escapeHtml(s.name || '') + '</div></td>' +
         '<td>' + kind + '</td>' +
-        '<td>' + (redcapOk ? 'OK' : '<span style="color:var(--error)">incomplete</span>') + '</td>' +
+        '<td>' + redcapDetail + fieldsDetail + '</td>' +
         '<td class="actions">' +
           '<button type="button" class="secondary" data-edit="' + escapeHtml(s.base) + '">Edit</button>' +
           '<button type="button" class="danger" data-remove="' + escapeHtml(s.base) + '">Remove</button>' +
@@ -378,20 +386,14 @@
     fForwarded.checked = study.forwarded;
     baseEmailGroup.classList.toggle('hidden', !study.forwarded);
     fBaseEmail.value = study.baseEmail || '';
-    fRedcapUrl.value = '';
-    fRedcapUrl.placeholder = 'Leave blank to keep existing';
-    fRedcapToken.value = '';
-    fAccessField.value = '';
-    fRecordIdField.value = '';
-    fForwardingField.value = '';
-    fDeviceField.value = '';
+    fRedcapUrl.value = study.redcapApiUrl || '';
+    fRedcapToken.value = study.redcapApiToken || '';
+    fAccessField.value = study.accessTokenField || '';
+    fRecordIdField.value = study.recordIdField || '';
+    fForwardingField.value = study.forwardingStatusField || '';
+    fDeviceField.value = study.deviceEmailField || '';
     formStatus.textContent = '';
     window.scrollTo({ top: formCard.offsetTop - 20, behavior: 'smooth' });
-    // Browser password managers can autofill a password-type field
-    // asynchronously, after this function already ran — clear again on
-    // the next tick so a stale saved value can't silently get sent as
-    // this study's new REDCap token.
-    setTimeout(() => { fRedcapToken.value = ''; }, 0);
   }
 
   cancelEditBtn.addEventListener('click', resetForm);
@@ -506,6 +508,31 @@
     } finally {
       debugBtn.disabled = false;
       debugBtn.textContent = 'Debug token';
+    }
+  });
+
+  const listTokensBtn = document.getElementById('listTokensBtn');
+  listTokensBtn.addEventListener('click', async () => {
+    const base = dBase.value.trim();
+    if (!base) {
+      debugOutput.textContent = 'base is required.';
+      debugOutput.classList.remove('hidden');
+      return;
+    }
+
+    listTokensBtn.disabled = true;
+    listTokensBtn.innerHTML = '<span class="spinner"></span>';
+    debugOutput.classList.remove('hidden');
+    debugOutput.textContent = 'Loading...';
+
+    try {
+      const result = await callAdmin('adminListTokens', { base: base });
+      debugOutput.textContent = JSON.stringify(result, null, 2);
+    } catch (err) {
+      debugOutput.textContent = 'Could not reach the server: ' + err.message;
+    } finally {
+      listTokensBtn.disabled = false;
+      listTokensBtn.textContent = 'List all tokens in project';
     }
   });
 
