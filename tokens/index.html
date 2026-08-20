@@ -552,13 +552,14 @@
     <button type="button" class="qr-cancel-btn" id="qrCancelBtn">Cancel</button>
   </div>
 
+<script src="config.js"></script>
 <script>
   // ── Configuration ────────────────────────────────────────────────────
   // This site talks to one Apps Script deployment. Which study a visitor
   // hits is picked by a `?base=value` query param — the backend resolves
   // everything else (REDCap config, display name, dedicated vs forwarded)
-  // from its own Script Properties. See backend/Code.gs.
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyrvKpSqkrc4j6QtGr7LyhhEMvREm3AQFI6UOilWmUwNYsUBRTMPFKC5v6yJNHj6pBf-Q/exec';
+  // from its own Script Properties. See backend/Code.gs. APPS_SCRIPT_URL
+  // itself lives in config.js, shared with admin.html.
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
