@@ -139,6 +139,16 @@
     border-radius: 999px; background: var(--bg); border: 1px solid var(--border);
   }
   code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
   .home-link {
     position: fixed;
@@ -231,6 +241,18 @@
       <div class="status-msg" id="formStatus" aria-live="polite"></div>
     </div>
 
+    <div class="card hidden" id="debugCard">
+      <h2>Debug a token<span class="help-icon" title="Runs the exact same REDCap lookup a real login does, but shows the filter used, configured field names, and the raw match(es) instead of the generic participant-facing error.">?</span></h2>
+      <label for="dBase">base</label>
+      <input type="text" id="dBase" placeholder="e.g. samma.study" autocomplete="off" />
+      <label for="dToken">Token</label>
+      <input type="text" id="dToken" placeholder="Token to look up" autocomplete="off" />
+      <div class="row">
+        <button type="button" id="debugBtn">Debug token</button>
+      </div>
+      <pre id="debugOutput" class="hidden"></pre>
+    </div>
+
   </div>
 
 <script>
@@ -261,6 +283,12 @@
   const fDeviceField = document.getElementById('fDeviceField');
   const saveBtn = document.getElementById('saveBtn');
   const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+  const debugCard = document.getElementById('debugCard');
+  const dBase = document.getElementById('dBase');
+  const dToken = document.getElementById('dToken');
+  const debugBtn = document.getElementById('debugBtn');
+  const debugOutput = document.getElementById('debugOutput');
 
   let editingBase = null; // non-null while editing an existing study
 
@@ -301,6 +329,7 @@
       renderStudies(result.studies || []);
       studiesCard.classList.remove('hidden');
       formCard.classList.remove('hidden');
+      debugCard.classList.remove('hidden');
       connectStatus.textContent = 'Connected.';
       connectStatus.className = 'status-msg success';
     } catch (err) {
@@ -457,6 +486,31 @@
       alert('Could not reach the server: ' + err.message);
     }
   }
+
+  debugBtn.addEventListener('click', async () => {
+    const base = dBase.value.trim();
+    const token = dToken.value.trim();
+    if (!base || !token) {
+      debugOutput.textContent = 'base and token are both required.';
+      debugOutput.classList.remove('hidden');
+      return;
+    }
+
+    debugBtn.disabled = true;
+    debugBtn.innerHTML = '<span class="spinner"></span>';
+    debugOutput.classList.remove('hidden');
+    debugOutput.textContent = 'Looking up...';
+
+    try {
+      const result = await callAdmin('adminDebugToken', { base: base, token: token });
+      debugOutput.textContent = JSON.stringify(result, null, 2);
+    } catch (err) {
+      debugOutput.textContent = 'Could not reach the server: ' + err.message;
+    } finally {
+      debugBtn.disabled = false;
+      debugBtn.textContent = 'Debug token';
+    }
+  });
 
   function escapeHtml(str) {
     const div = document.createElement('div');

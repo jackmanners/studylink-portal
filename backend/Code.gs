@@ -206,7 +206,7 @@ const SESSION_TTL_SEC = 300; // 5 minutes
 
 // ── Entry point ─────────────────────────────────────────────────────────
 
-const ADMIN_ACTIONS = ['adminListStudies', 'adminRegisterStudy', 'adminUnregisterStudy'];
+const ADMIN_ACTIONS = ['adminListStudies', 'adminRegisterStudy', 'adminUnregisterStudy', 'adminDebugToken'];
 
 function doPost(e) {
   let body;
@@ -232,6 +232,9 @@ function doPost(e) {
       }
       if (action === 'adminUnregisterStudy') {
         return jsonOutput(handleAdminUnregisterStudy(body.base));
+      }
+      if (action === 'adminDebugToken') {
+        return jsonOutput(handleAdminDebugToken(body.base, body.token));
       }
     } catch (err) {
       return jsonOutput({ success: false, error: 'Server error: ' + err.message });
@@ -496,6 +499,70 @@ function handleAdminUnregisterStudy(base) {
   }
   PropertiesService.getScriptProperties().deleteProperty('STUDY_' + clean.toUpperCase());
   return { success: true };
+}
+
+// Runs the exact same REDCap lookup as a real login attempt, but returns
+// full diagnostic detail (filter used, field names configured, raw
+// match(es)) instead of the generic public-facing error. Admin-gated —
+// this is the only place a token's associated record data is ever
+// returned to the browser.
+function handleAdminDebugToken(base, token) {
+  const cleanBase = sanitizeBase_(base);
+  if (!cleanBase) {
+    return { success: false, error: 'Invalid base value.' };
+  }
+  const cleanToken = String(token || '').trim();
+  if (!cleanToken) {
+    return { success: false, error: 'Missing token.' };
+  }
+
+  let config;
+  try {
+    config = getConfig_(cleanBase);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+
+  const filterLogic = '[' + config.ACCESS_TOKEN_FIELD + ']=\'' + cleanToken.replace(/'/g, "\\'") + '\'';
+  const payload = {
+    token: config.REDCAP_API_TOKEN,
+    content: 'record',
+    format: 'json',
+    type: 'flat',
+    filterLogic: filterLogic,
+    'fields[0]': config.RECORD_ID_FIELD,
+    'fields[1]': config.ACCESS_TOKEN_FIELD,
+    'fields[2]': config.FORWARDING_STATUS_FIELD,
+    'fields[3]': config.DEVICE_EMAIL_FIELD,
+    returnFormat: 'json'
+  };
+
+  let response;
+  try {
+    response = UrlFetchApp.fetch(config.REDCAP_API_URL, { method: 'post', payload: payload, muteHttpExceptions: true });
+  } catch (err) {
+    return { success: false, error: 'REDCap request failed: ' + err.message };
+  }
+
+  const httpStatus = response.getResponseCode();
+  const bodyText = response.getContentText();
+  let records = null;
+  try { records = JSON.parse(bodyText); } catch (err) { /* leave null, raw body returned below */ }
+
+  return {
+    success: true,
+    filterLogic: filterLogic,
+    fieldsUsed: {
+      accessTokenField: config.ACCESS_TOKEN_FIELD,
+      recordIdField: config.RECORD_ID_FIELD,
+      forwardingStatusField: config.FORWARDING_STATUS_FIELD,
+      deviceEmailField: config.DEVICE_EMAIL_FIELD
+    },
+    httpStatus: httpStatus,
+    matchCount: Array.isArray(records) ? records.length : null,
+    records: Array.isArray(records) ? records : null,
+    rawBody: Array.isArray(records) ? null : bodyText.substring(0, 500)
+  };
 }
 
 // ── Action: verify ─────────────────────────────────────────────────────
